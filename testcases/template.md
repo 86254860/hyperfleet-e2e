@@ -1,0 +1,52 @@
+
+# Feature: [Feature Name]
+
+## Test Title: [Test Case Title]
+
+### Description
+
+[Brief description of what this test case validates. 1-2 sentences describing the objective and scope.]
+
+---
+
+| **Field** | **Value** |
+|-----------|-----------|
+| **Title** | [Test Case Title] |
+| **Feature** | [Feature Name] |
+| **Pos/Neg** | [Positive/Negative] |
+| **Priority** | [Critical/High/Medium/Low] |
+| **Status** | [Draft/Deprecated] |
+| **Automation** | [Automated/Not Automated/Manual Only] |
+| **Version** | [Version Number] |
+| **Created** | [YYYY-MM-DD] |
+| **Updated** | [YYYY-MM-DD] |
+
+
+---
+
+### Preconditions (Optional)
+
+[List all prerequisites that must be met before executing this test. Include system state, required resources, configurations, etc.]
+
+1. [Precondition 1]
+2. [Precondition 2]
+3. [Precondition 3]
+
+---
+
+### Test Steps
+
+#### Step 1: [Step Description]
+- [ ] [Steps/Action]
+- [ ] [Expected result or validation]
+
+#### Step 2: [Step Description]
+- [ ] [Steps/Action]
+- [ ] [Expected result or validation]
+
+......
+
+---
+
+### Attachments (Optional)
+
