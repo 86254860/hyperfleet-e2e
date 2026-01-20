@@ -1,0 +1,54 @@
+package config
+
+import "time"
+
+// Log level constants
+const (
+	// LogLevelDebug enables detailed test steps and all framework internal logs
+	LogLevelDebug = "debug"
+
+	// LogLevelInfo enables detailed test steps and high-level framework logs (default)
+	LogLevelInfo = "info"
+
+	// LogLevelWarn shows only warnings and errors (minimal output for CI/CD)
+	LogLevelWarn = "warn"
+
+	// LogLevelError shows only errors (absolute minimal output)
+	LogLevelError = "error"
+)
+
+// Log format constants
+const (
+	LogFormatJSON = "json"
+	LogFormatText = "text"
+)
+
+// Log output constants
+const (
+	LogOutputStdout = "stdout"
+	LogOutputStderr = "stderr"
+)
+
+// Default timeout values
+const (
+	// DefaultClusterReadyTimeout is the default timeout for waiting for a cluster to become ready
+	DefaultClusterReadyTimeout = 30 * time.Minute
+
+	// DefaultNodePoolReadyTimeout is the default timeout for waiting for a nodepool to become ready
+	DefaultNodePoolReadyTimeout = 30 * time.Minute
+
+	// DefaultAdapterProcessingTimeout is the default timeout for waiting for adapter conditions
+	DefaultAdapterProcessingTimeout = 5 * time.Minute
+
+	// DefaultPollInterval is the default interval for polling operations
+	DefaultPollInterval = 10 * time.Second
+
+	// DefaultLogLevel is the default log level
+	DefaultLogLevel = LogLevelInfo
+
+	// DefaultLogFormat is the default log format
+	DefaultLogFormat = LogFormatText
+
+	// DefaultLogOutput is the default log output
+	DefaultLogOutput = LogOutputStdout
+)

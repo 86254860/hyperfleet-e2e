@@ -1,0 +1,87 @@
+# HyperFleet E2E Test Configuration
+#
+# This is the main configuration file for the E2E test framework.
+# It is automatically loaded from ./configs/config.yaml if present.
+#
+# Configuration Priority (highest to lowest):
+#   1. Command-line flags
+#   2. Environment variables (HYPERFLEET_* prefix)
+#   3. This config file
+#   4. Built-in defaults
+#
+# See docs/config.md for full documentation
+
+# ============================================================================
+# API Configuration
+# ============================================================================
+
+api:
+  # HyperFleet API URL
+  # Can be overridden by:
+  #   - CLI flag: --api-url
+  #   - Environment variable: HYPERFLEET_API_URL
+  #
+  # This is REQUIRED for running tests
+  url: ""
+
+# ============================================================================
+# Timeout Configuration
+# ============================================================================
+
+timeouts:
+  cluster:
+    # Maximum time to wait for cluster Ready state
+    # Recommended: 5m
+    #
+    # Format: Duration string (e.g., "30m", "1h", "5m")
+    # Can be overridden by: HYPERFLEET_TIMEOUTS_CLUSTER_READY
+    ready: 5m
+
+  nodepool:
+    # Maximum time to wait for nodepool Ready state
+    # Recommended: 2m
+    #
+    # Format: Duration string
+    # Can be overridden by: HYPERFLEET_TIMEOUTS_NODEPOOL_READY
+    ready: 2m
+
+  adapter:
+    # Maximum time to wait for adapter processing
+    # Recommended: 1m
+    #
+    # Format: Duration string
+    # Can be overridden by: HYPERFLEET_TIMEOUTS_ADAPTER_PROCESSING
+    processing: 1m
+
+# ============================================================================
+# Polling Configuration
+# ============================================================================
+
+polling:
+  # Polling interval for status checks
+  # How often to check cluster/adapter status during wait operations
+  #
+  # Lower values = faster feedback, higher API load
+  # Higher values = slower feedback, lower API load
+  #
+  # Format: Duration string
+  # Recommended: 10s for production, 5s for development (faster feedback)
+  # Can be overridden by: HYPERFLEET_POLLING_INTERVAL
+  interval: 10s
+
+# ============================================================================
+# Logging Configuration
+# ============================================================================
+
+log:
+  # Log level: debug, info, warn, error
+  # Can be overridden by: HYPERFLEET_LOG_LEVEL
+  level: info
+
+  # Log format: text, json
+  # Can be overridden by: HYPERFLEET_LOG_FORMAT
+  format: text
+
+  # Log output: stdout, stderr
+  # Can be overridden by: HYPERFLEET_LOG_OUTPUT
+  output: stdout
