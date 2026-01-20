@@ -43,7 +43,7 @@ func TestAllE2ETestsHaveRequiredLabels(t *testing.T) {
 		t.Errorf("Found %d test specs with missing required labels:\n  - %s",
 			len(failures), strings.Join(failures, "\n  - "))
 	} else {
-		t.Logf("✓ All %d test specs have required labels (Priority, Stability, Scenario)", len(specs))
+		t.Logf("✓ All %d test specs have required labels (Severity)", len(specs))
 	}
 }
 
@@ -207,23 +207,16 @@ func constantToLabelValue(constName string) string {
 	// Map constant names to their string values
 	// This must match the constants in pkg/labels/labels.go
 	mapping := map[string]string{
-		// Priority
+		// Severity
 		"Tier0": labels.Tier0,
 		"Tier1": labels.Tier1,
 		"Tier2": labels.Tier2,
-		// Stability
-		"Stable":    labels.Stable,
-		"Informing": labels.Informing,
-		"Flaky":     labels.Flaky,
 		// Scenario
-		"HappyPath": labels.HappyPath,
-		"Negative":  labels.Negative,
-		"Scale":     labels.Scale,
+		"Negative":    labels.Negative,
+		"Performance": labels.Performance,
 		// Functionality
-		"Lifecycle": labels.Lifecycle,
-		"Upgrade":   labels.Upgrade,
+		"Upgrade": labels.Upgrade,
 		// Constraint
-		"Serial":     labels.Serial,
 		"Disruptive": labels.Disruptive,
 		"Slow":       labels.Slow,
 	}

@@ -15,7 +15,7 @@ import (
 var lifecycleTestName = "[Suite: cluster][baseline] Full Cluster Creation Flow on GCP"
 
 var _ = ginkgo.Describe(lifecycleTestName,
-	ginkgo.Label(labels.Tier0, labels.Stable, labels.HappyPath, labels.Lifecycle),
+	ginkgo.Label(labels.Tier0),
 	func() {
 		var h *helper.Helper
 		var clusterID string

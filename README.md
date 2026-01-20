@@ -19,7 +19,7 @@ make build
 
 # Set API URL and run tests
 export HYPERFLEET_API_URL=https://api.hyperfleet.example.com
-./bin/hyperfleet-e2e test --label-filter=critical
+./bin/hyperfleet-e2e test --label-filter=tier0
 ```
 
 **Done!** The framework created a cluster, validated adapters, and cleaned up resources.
@@ -29,17 +29,11 @@ export HYPERFLEET_API_URL=https://api.hyperfleet.example.com
 ### Filter by Labels
 
 ```bash
-# Core critical path tests (PR gate)
-./bin/hyperfleet-e2e test --label-filter="tier0 && stable"
+# Critical severity tests (Release gate)
+./bin/hyperfleet-e2e test --label-filter=tier0
 
-# All stable tests (daily regression)
-./bin/hyperfleet-e2e test --label-filter=stable
-
-# Lifecycle tests only
-./bin/hyperfleet-e2e test --label-filter=lifecycle
-
-# Combined filters: Tier0/Tier1 stable tests
-./bin/hyperfleet-e2e test --label-filter="(tier0 || tier1) && stable"
+# Exclude slow tests
+./bin/hyperfleet-e2e test --label-filter="!slow"
 ```
 
 ### Common Options
@@ -117,9 +111,9 @@ hyperfleet-e2e/
 # Set API URL
 export HYPERFLEET_API_URL=$CI_API_URL
 
-# Run critical tests with JUnit output
+# Run critical severity tests with JUnit output
 ./bin/hyperfleet-e2e test \
-  --label-filter=critical \
+  --label-filter=tier0 \
   --junit-report=results.xml \
   --log-format=json
 ```
@@ -131,7 +125,7 @@ make image
 podman run --rm \
   -e HYPERFLEET_API_URL=https://api.example.com \
   quay.io/openshift-hyperfleet/hyperfleet-e2e:latest \
-  test --label-filter=critical
+  test --label-filter=tier0
 ```
 
 ## Development
