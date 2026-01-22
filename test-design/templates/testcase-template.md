@@ -1,3 +1,12 @@
+<!--
+TEST CASE STANDARDS:
+- One test case = One markdown file
+- File naming: {action}-{resource}.md (e.g., create-cluster.md, delete-nodepool.md)
+- File location: testcases/{component}/{test-name}.md
+- Use lowercase with hyphens (kebab-case)
+
+See test-design/README.md for complete standards.
+-->
 
 # Feature: [Feature Name]
 

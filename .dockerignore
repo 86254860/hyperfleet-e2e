@@ -30,3 +30,29 @@ Thumbs.db
 
 # Build artifacts
 dist/
+output/
+out/
+
+# Generated code (will be regenerated in container)
+pkg/api/openapi/openapi.gen.go
+openapi/openapi.yaml
+
+# Test results
+*.xml
+results/
+test-results/
+
+# Temporary files
+*.tmp
+*.bak
+*.log
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Documentation (not needed in container)
+docs/
+*.md
+!README.md

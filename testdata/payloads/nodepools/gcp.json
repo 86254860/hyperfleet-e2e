@@ -1,0 +1,17 @@
+{
+  "kind": "NodePool",
+  "name": "gpu-nodepool-{{.Random}}",
+  "labels": {
+    "workload": "gpu",
+    "tier": "compute",
+    "environment": "test"
+  },
+  "spec": {
+    "replicas": 2,
+    "machineType": "n1-standard-8",
+    "labels": {
+      "node-role": "worker",
+      "gpu-enabled": "true"
+    }
+  }
+}
