@@ -72,8 +72,6 @@ import (
     . "github.com/onsi/gomega"
 
     "github.com/openshift-hyperfleet/hyperfleet-e2e/pkg/api/openapi"
-    "github.com/openshift-hyperfleet/hyperfleet-e2e/pkg/client"
-    "github.com/openshift-hyperfleet/hyperfleet-e2e/pkg/config"
     "github.com/openshift-hyperfleet/hyperfleet-e2e/pkg/helper"
     "github.com/openshift-hyperfleet/hyperfleet-e2e/pkg/labels"
 )
@@ -81,35 +79,32 @@ import (
 var testName = "[Suite: cluster] Create Cluster via API"
 
 var _ = ginkgo.Describe(testName,
-    ginkgo.Label(labels.Lifecycle, labels.Critical, labels.HappyPath),
+    ginkgo.Label(labels.Tier0),
     func() {
         var h *helper.Helper
         var clusterID string
 
         ginkgo.BeforeEach(func() {
-            cfg, err := config.Load()
-            Expect(err).NotTo(HaveOccurred())
-            h, err = helper.New(cfg)
-            Expect(err).NotTo(HaveOccurred())
+            h = helper.New()
         })
 
         ginkgo.It("should create cluster successfully", func(ctx context.Context) {
             ginkgo.By("submitting cluster creation request")
             cluster, err := h.Client.CreateClusterFromPayload(ctx, "testdata/payloads/clusters/gcp.json")
             Expect(err).NotTo(HaveOccurred())
-            clusterID = cluster.ID
+            clusterID = *cluster.Id
 
             ginkgo.By("waiting for cluster to become Ready")
-            Eventually(func(g Gomega) {
-                cluster, err := h.Client.GetCluster(ctx, clusterID)
-                g.Expect(err).NotTo(HaveOccurred())
-                g.Expect(cluster.Status.Phase).To(Equal(openapi.Ready))
-            }, h.Cfg.Timeouts.ClusterReady, h.Cfg.Timeouts.PollInterval).Should(Succeed())
+            err = h.WaitForClusterPhase(ctx, clusterID, openapi.Ready, h.Cfg.Timeouts.Cluster.Ready)
+            Expect(err).NotTo(HaveOccurred())
         })
 
         ginkgo.AfterEach(func(ctx context.Context) {
-            if !h.Cfg.KeepResources && clusterID != "" {
-                _ = h.Client.DeleteCluster(ctx, clusterID)
+            if h == nil || clusterID == "" {
+                return
+            }
+            if err := h.CleanupTestCluster(ctx, clusterID); err != nil {
+                ginkgo.GinkgoWriter.Printf("Warning: failed to cleanup cluster %s: %v\n", clusterID, err)
             }
         })
     },
@@ -132,14 +127,13 @@ var lifecycleTestName = "[Suite: cluster] Full Cluster Creation Flow on GCP"
 
 All tests must use labels for categorization. See `pkg/labels/labels.go` for complete definitions.
 
-**Required labels (3)**:
-- **Priority**: `Tier0` | `Tier1` | `Tier2`
-- **Stability**: `Stable` | `Informing` | `Flaky`
-- **Scenario**: `HappyPath` | `Negative` | `Scale`
+**Required labels (1)**:
+- **Severity**: `Tier0` | `Tier1` | `Tier2`
 
 **Optional labels**:
-- **Functionality**: `Lifecycle` | `Upgrade`
-- **Constraint**: `Serial` | `Disruptive` | `Slow`
+- **Scenario**: `Negative` | `Performance`
+- **Functionality**: `Upgrade`
+- **Constraint**: `Disruptive` | `Slow`
 
 **Example**:
 
@@ -148,7 +142,17 @@ import "github.com/openshift-hyperfleet/hyperfleet-e2e/pkg/labels"
 
 var testName = "[Suite: cluster] Full Cluster Creation Flow on GCP"
 var _ = ginkgo.Describe(testName,
-    ginkgo.Label(labels.Tier0, labels.Stable, labels.HappyPath, labels.Lifecycle),
+    ginkgo.Label(labels.Tier0),
+    func() { ... }
+)
+```
+
+**Example with optional labels**:
+
+```go
+// Negative test case with slow execution
+var _ = ginkgo.Describe(testName,
+    ginkgo.Label(labels.Tier1, labels.Negative, labels.Slow),
     func() { ... }
 )
 ```
@@ -157,15 +161,11 @@ var _ = ginkgo.Describe(testName,
 
 ```go
 ginkgo.BeforeEach(func() {
-    cfg, err := config.Load()
-    Expect(err).NotTo(HaveOccurred())
-    h, err = helper.New(cfg)
-    Expect(err).NotTo(HaveOccurred())
+    h = helper.New()
 })
 ```
 
-- Load configuration
-- Create Helper instance
+- Create Helper instance (automatically loads configuration)
 - Initialize test context
 
 ### 4. Test Steps with ginkgo.By
@@ -189,13 +189,18 @@ ginkgo.By("verifying adapter conditions")
 
 ```go
 ginkgo.AfterEach(func(ctx context.Context) {
-    if !h.Cfg.KeepResources && clusterID != "" {
-        _ = h.Client.DeleteCluster(ctx, clusterID)
+    if h == nil || clusterID == "" {
+        return
+    }
+    if err := h.CleanupTestCluster(ctx, clusterID); err != nil {
+        ginkgo.GinkgoWriter.Printf("Warning: failed to cleanup cluster %s: %v\n", clusterID, err)
     }
 })
 ```
 
 - Clean up resources after test
+- Skip cleanup if helper not initialized or no cluster created
+- Log cleanup failures as warnings
 
 ## Writing Assertions
 
@@ -212,7 +217,7 @@ Eventually(func(g Gomega) {
     cluster, err := h.Client.GetCluster(ctx, clusterID)
     g.Expect(err).NotTo(HaveOccurred())
     g.Expect(cluster.Status.Phase).To(Equal(openapi.Ready))
-}, h.Cfg.Timeouts.ClusterReady, h.Cfg.Timeouts.PollInterval).Should(Succeed())
+}, h.Cfg.Timeouts.Cluster.Ready, h.Cfg.Polling.Interval).Should(Succeed())
 ```
 
 **Important**: Inside `Eventually` closures, use `g.Expect()` instead of `Expect()`
@@ -222,7 +227,7 @@ Eventually(func(g Gomega) {
 ### Wait for Cluster Ready
 
 ```go
-err = h.WaitForClusterPhase(ctx, clusterID, openapi.Ready, h.Cfg.Timeouts.ClusterReady)
+err = h.WaitForClusterPhase(ctx, clusterID, openapi.Ready, h.Cfg.Timeouts.Cluster.Ready)
 Expect(err).NotTo(HaveOccurred())
 ```
 

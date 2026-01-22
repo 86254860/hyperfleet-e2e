@@ -4,38 +4,27 @@ import "fmt"
 
 // ValidateLabels verifies that tests contain all required label dimensions
 func ValidateLabels(testLabels []string) error {
-	hasPriority := false
-	hasStability := false
-	hasScenario := false
+	hasSeverity := false
 
 	for _, label := range testLabels {
 		switch label {
-		// Priority dimension (required)
+		// Severity dimension (required)
 		case Tier0, Tier1, Tier2:
-			hasPriority = true
-		// Stability dimension (required)
-		case Stable, Informing, Flaky:
-			hasStability = true
-		// Scenario dimension (required)
-		case HappyPath, Negative, Scale:
-			hasScenario = true
+			hasSeverity = true
+		// Scenario dimension (optional)
+		case Negative, Performance:
+			// Optional, no validation needed
 		// Functionality dimension (optional)
-		case Lifecycle, Upgrade:
+		case Upgrade:
 			// Optional, no validation needed
 		// Constraint dimension (optional)
-		case Serial, Disruptive, Slow:
+		case Disruptive, Slow:
 			// Optional, no validation needed
 		}
 	}
 
-	if !hasPriority {
-		return fmt.Errorf("missing priority label (tier0/tier1/tier2)")
-	}
-	if !hasStability {
-		return fmt.Errorf("missing stability label (stable/informing/flaky)")
-	}
-	if !hasScenario {
-		return fmt.Errorf("missing scenario label (happy-path/negative/scale)")
+	if !hasSeverity {
+		return fmt.Errorf("missing severity label (%s/%s/%s)", Tier0, Tier1, Tier2)
 	}
 
 	return nil
