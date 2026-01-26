@@ -15,7 +15,7 @@ import (
 var lifecycleTestName = "[Suite: nodepool] Full NodePool Creation Flow"
 
 var _ = ginkgo.Describe(lifecycleTestName,
-	ginkgo.Label(labels.Tier0),
+	ginkgo.Label(labels.Tier1),
 	func() {
 		var h *helper.Helper
 		var clusterID string
