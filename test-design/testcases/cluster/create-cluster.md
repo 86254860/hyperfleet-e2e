@@ -39,13 +39,10 @@ Send POST request to create a new GCP cluster using the payload from [templates/
 ```bash
 curl -X POST ${API_URL}/api/hyperfleet/v1/clusters \
   -H "Content-Type: application/json" \
-  -d @testcases/templates/create_cluster_gcp.json
+  -d @testdata/payloads/clusters/gcp_validation_adapter_values.yaml
 ```
 
-- <details>
-  <summary>Payload example (click to expand)</summary>
-
-See [templates/create_cluster_gcp.json](templates/create_cluster_gcp.json) for the complete cluster creation payload.
+Payload example: See [gcp.json](../../../testdata/payloads/clusters/gcp.json): for the complete cluster creation payload.
 
 Key fields in the payload:
 - `kind`: "Cluster"
@@ -57,7 +54,6 @@ Key fields in the payload:
 - `spec.networking`: cluster and service network CIDRs
 - `spec.dns.baseDomain`: base domain for the cluster
 
-</details>
 
 **Expected Result:**
 - Response status code is 201 (Created)
@@ -621,4 +617,3 @@ kubectl get pods -n {cluster_id}
   gcp-validator-2nmd7vphnua8m388ve9mp8oevah401up-1-99tqr   0/2     Completed   0          3h58
   ```
 ---
-
