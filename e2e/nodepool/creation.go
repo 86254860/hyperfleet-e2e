@@ -33,8 +33,8 @@ var _ = ginkgo.Describe(lifecycleTestName,
 			ginkgo.GinkgoWriter.Printf("Using cluster ID: %s\n", clusterID)
 
 			ginkgo.By("waiting for cluster to become Ready")
-			err = h.WaitForClusterPhase(ctx, clusterID, openapi.Ready, h.Cfg.Timeouts.Cluster.Ready)
-			Expect(err).NotTo(HaveOccurred(), "cluster should be in Ready phase")
+			err = h.WaitForClusterCondition(ctx, clusterID, "Ready", openapi.ResourceConditionStatusTrue, h.Cfg.Timeouts.Cluster.Ready)
+			Expect(err).NotTo(HaveOccurred(), "cluster should have Ready condition set to True")
 
 			ginkgo.By("submitting nodepool creation request via POST /api/hyperfleet/v1/clusters/{id}/nodepools")
 			nodepool, err := h.Client.CreateNodePoolFromPayload(ctx, clusterID, "testdata/payloads/nodepools/gcp.json")
@@ -46,11 +46,10 @@ var _ = ginkgo.Describe(lifecycleTestName,
 			ginkgo.GinkgoWriter.Printf("Created nodepool ID: %s\n", nodepoolID)
 
 			Expect(nodepool.Status).NotTo(BeNil(), "nodepool status should be present")
-			Expect(nodepool.Status.Phase).To(Equal(openapi.NotReady), "nodepool should be in NotReady phase initially")
 
-			ginkgo.By("monitoring nodepool status - waiting for phase transition to Ready")
-			err = h.WaitForNodePoolPhase(ctx, clusterID, nodepoolID, openapi.Ready, h.Cfg.Timeouts.NodePool.Ready)
-			Expect(err).NotTo(HaveOccurred(), "nodepool should reach Ready phase")
+			ginkgo.By("monitoring nodepool status - waiting for Ready condition")
+			err = h.WaitForNodePoolCondition(ctx, clusterID, nodepoolID, "Ready", openapi.ResourceConditionStatusTrue, h.Cfg.Timeouts.NodePool.Ready)
+			Expect(err).NotTo(HaveOccurred(), "nodepool should have Ready condition set to True")
 
 			ginkgo.By("verifying all nodepool adapter conditions")
 			const expectedAdapterCount = 1 // GCP nodepool expects 1 adapter
@@ -61,15 +60,15 @@ var _ = ginkgo.Describe(lifecycleTestName,
 					"expected %d adapter(s), got %d", expectedAdapterCount, len(statuses.Items))
 
 				for _, adapter := range statuses.Items {
-					hasApplied := h.HasCondition(adapter.Conditions, client.ConditionTypeApplied, openapi.True)
+					hasApplied := h.HasAdapterCondition(adapter.Conditions, client.ConditionTypeApplied, openapi.AdapterConditionStatusTrue)
 					g.Expect(hasApplied).To(BeTrue(),
 						"adapter %s should have Applied=True", adapter.Adapter)
 
-					hasAvailable := h.HasCondition(adapter.Conditions, client.ConditionTypeAvailable, openapi.True)
+					hasAvailable := h.HasAdapterCondition(adapter.Conditions, client.ConditionTypeAvailable, openapi.AdapterConditionStatusTrue)
 					g.Expect(hasAvailable).To(BeTrue(),
 						"adapter %s should have Available=True", adapter.Adapter)
 
-					hasHealth := h.HasCondition(adapter.Conditions, client.ConditionTypeHealth, openapi.True)
+					hasHealth := h.HasAdapterCondition(adapter.Conditions, client.ConditionTypeHealth, openapi.AdapterConditionStatusTrue)
 					g.Expect(hasHealth).To(BeTrue(),
 						"adapter %s should have Health=True", adapter.Adapter)
 				}
@@ -79,7 +78,9 @@ var _ = ginkgo.Describe(lifecycleTestName,
 			finalNodePool, err := h.Client.GetNodePool(ctx, clusterID, nodepoolID)
 			Expect(err).NotTo(HaveOccurred(), "failed to get final nodepool state")
 			Expect(finalNodePool.Status).NotTo(BeNil(), "nodepool status should be present")
-			Expect(finalNodePool.Status.Phase).To(Equal(openapi.Ready), "nodepool phase should be Ready")
+			// Check that nodepool has Ready condition set to True
+			hasReady := h.HasResourceCondition(finalNodePool.Status.Conditions, client.ConditionTypeReady, openapi.ResourceConditionStatusTrue)
+			Expect(hasReady).To(BeTrue(), "nodepool should have Ready condition set to True")
 		})
 
 		ginkgo.AfterEach(func(ctx context.Context) {
