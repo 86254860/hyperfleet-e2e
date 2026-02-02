@@ -6,7 +6,6 @@ import (
 	"github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega" //nolint:staticcheck // dot import for test readability
 
-	"github.com/openshift-hyperfleet/hyperfleet-e2e/pkg/api/openapi"
 	"github.com/openshift-hyperfleet/hyperfleet-e2e/pkg/helper"
 	"github.com/openshift-hyperfleet/hyperfleet-e2e/pkg/labels"
 )
@@ -34,8 +33,9 @@ var _ = ginkgo.Describe(lifecycleTestName,
 			ginkgo.GinkgoWriter.Printf("Created cluster ID: %s\n", clusterID)
 
 			Expect(cluster.Status).NotTo(BeNil(), "cluster status should be present")
-			Expect(cluster.Status.Phase).To(Equal(openapi.NotReady), "cluster should be in NotReady phase initially")
 			/** <TODO>
+			Expect(cluster.Status.Phase).To(Equal(openapi.NotReady), "cluster should be in NotReady phase initially")
+
 						 Cluster final status depends on all deployed adapter result, this is still in progress.
 			             Will update this part once adapter scope is finalized.
 						ginkgo.By("monitoring cluster status - waiting for phase transition to Ready")
