@@ -20,10 +20,8 @@ See test-design/README.md for complete standards.
 
 | **Field** | **Value** |
 |-----------|-----------|
-| **Title** | [Test Case Title] |
-| **Feature** | [Feature Name] |
 | **Pos/Neg** | [Positive/Negative] |
-| **Priority** | [Critical/High/Medium/Low] |
+| **Priority** | [Tier0/Tier1/Tier2] |
 | **Status** | [Draft/Deprecated] |
 | **Automation** | [Automated/Not Automated/Manual Only] |
 | **Version** | [Version Number] |
