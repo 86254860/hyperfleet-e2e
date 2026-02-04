@@ -15,7 +15,7 @@
 go.work
 
 # Build output
-out/
+output/
 bin/
 dist/
 
