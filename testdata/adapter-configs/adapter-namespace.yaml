@@ -1,0 +1,220 @@
+# NOTE: This file is currently a placeholder and will be updated to use the latest template-supported configuration.
+#
+# This adapter creates a namespace for each cluster, serving as the landing zone
+# for cluster-specific resources.
+
+apiVersion: hyperfleet.redhat.com/v1alpha1
+kind: AdapterConfig
+metadata:
+  name: landing-zone-adapter
+  namespace: hyperfleet-system
+  labels:
+    hyperfleet.io/adapter-type: landing-zone
+    hyperfleet.io/component: adapter
+
+spec:
+  adapter:
+    version: "0.1.0"
+  
+  # ============================================================================
+  # HyperFleet API Configuration
+  # ============================================================================
+  hyperfleetApi:
+    timeout: 2s
+    retryAttempts: 3
+
+  # ============================================================================
+  # Kubernetes Configuration
+  # ============================================================================
+  kubernetes:
+    apiVersion: "v1"
+    
+  # ============================================================================
+  # Parameters
+  # ============================================================================
+  params:
+    - name: "hyperfleetApiBaseUrl"
+      source: "env.HYPERFLEET_API_BASE_URL"
+      type: "string"
+      description: "Base URL for the HyperFleet API"
+      required: true
+
+    - name: "hyperfleetApiVersion"
+      source: "env.HYPERFLEET_API_VERSION"
+      type: "string"
+      default: "v1"
+      description: "API version to use"
+
+    - name: "clusterId"
+      source: "event.id"
+      type: "string"
+      description: "Unique identifier for the target cluster"
+      required: true
+
+
+  # ============================================================================
+  # Preconditions
+  # ============================================================================
+  # Preconditions run before resource operations to validate state
+  preconditions:
+    - name: "clusterStatus"
+      apiCall:
+        method: "GET"
+        url: "{{ .hyperfleetApiBaseUrl }}/api/hyperfleet/{{ .hyperfleetApiVersion }}/clusters/{{ .clusterId }}"
+        timeout: 10s
+        retryAttempts: 3
+        retryBackoff: "exponential"
+      capture:
+        - name: "clusterName"
+          field: "name"
+        - name: "clusterPhase"
+          field: "status.phase"
+        - name: "generationId"
+          field: "generation"
+      conditions:
+        - field: "clusterPhase"
+          operator: "in"
+          values: ["NotReady", "Ready"]
+
+  # ============================================================================
+  # Resources
+  # ============================================================================
+  resources:
+    # ==========================================================================
+    # Resource: Cluster Namespace
+    # ==========================================================================
+    - name: "clusterNamespace"
+      manifest:
+        apiVersion: v1
+        kind: Namespace
+        metadata:
+          name: "{{ .clusterId | lower }}"
+          labels:
+            hyperfleet.io/cluster-id: "{{ .clusterId }}"
+            hyperfleet.io/managed-by: "landing-zone-adapter"
+            hyperfleet.io/resource-type: "namespace"
+          annotations:
+            hyperfleet.io/created-by: "hyperfleet-adapter"
+            hyperfleet.io/generation: "{{ .generationId }}"
+      discovery:
+        bySelectors:
+          labelSelector:
+            hyperfleet.io/resource-type: "namespace"
+            hyperfleet.io/cluster-id: "{{ .clusterId }}"
+            hyperfleet.io/managed-by: "landing-zone-adapter"
+
+    # ==========================================================================
+    # Resource: GCP Service Account
+    # ==========================================================================
+    # KSA for customer GCP authentication using principalSet. Customer grants
+    # permissions once, allowing all KSAs in all clusters to access their
+    # resources.
+    #
+    # principalSet://iam.googleapis.com/projects/PROJECT_NUMBER/locations/global/workloadIdentityPools/POOL_ID/*
+    - name: "gcpServiceAccount"
+      manifest:
+        apiVersion: v1
+        kind: ServiceAccount
+        metadata:
+          name: "landing-zone-adapter-task"
+          namespace: "{{ .clusterId | lower }}"
+          labels:
+            hyperfleet.io/cluster-id: "{{ .clusterId }}"
+            hyperfleet.io/managed-by: "landing-zone-adapter"
+            hyperfleet.io/resource-type: "serviceaccount"
+          annotations:
+            hyperfleet.io/created-by: "hyperfleet-adapter"
+            hyperfleet.io/generation: "{{ .generationId }}"
+      discovery:
+        bySelectors:
+          labelSelector:
+            hyperfleet.io/resource-type: "serviceaccount"
+            hyperfleet.io/cluster-id: "{{ .clusterId }}"
+            hyperfleet.io/managed-by: "landing-zone-adapter"
+
+  # ============================================================================
+  # Post-Processing
+  # ============================================================================
+  post:
+    payloads:
+      # Build status payload inline
+      - name: "clusterStatusPayload"
+        build:
+          adapter: "{{.metadata.name }}"
+          conditions:
+            # Applied: Namespace successfully created
+            - type: "Applied"
+              status:
+                expression: |
+                  resources.?clusterNamespace.?status.?phase.orValue("") == "Active" ? "True" : "False"
+              reason:
+                expression: |
+                  resources.?clusterNamespace.?status.?phase.orValue("") == "Active"
+                    ? "NamespaceCreated"
+                    : "NamespacePending"
+              message:
+                expression: |
+                  resources.?clusterNamespace.?status.?phase.orValue("") == "Active"
+                    ? "Namespace created successfully"
+                    : "Namespace creation in progress"
+
+            # Available: Namespace is active and ready
+            - type: "Available"
+              status:
+                expression: |
+                  resources.?clusterNamespace.?status.?phase.orValue("") == "Active" ? "True" : "False"
+              reason:
+                expression: |
+                  resources.?clusterNamespace.?status.?phase.orValue("") == "Active" ? "NamespaceReady" : "NamespaceNotReady"
+              message:
+                expression: |
+                  resources.?clusterNamespace.?status.?phase.orValue("") == "Active" ? "Landing zone namespace is active and ready" : "Landing zone namespace is not active and ready"
+
+            # Health: Adapter execution status (runtime)
+            - type: "Health"
+              status:
+                expression: |
+                  adapter.?executionStatus.orValue("") == "success" ? "True" : (adapter.?executionStatus.orValue("") == "failed" ? "False" : "Unknown")
+              reason:
+                expression: |
+                  adapter.?errorReason.orValue("") != "" ? adapter.?errorReason.orValue("") : "Healthy"
+              message:
+                expression: |
+                  adapter.?errorMessage.orValue("") != "" ? adapter.?errorMessage.orValue("") : "All adapter operations completed successfully"
+
+          # Event generation ID metadata field needs to use expression to avoid interpolation issues, template render will set it to
+          observed_generation:
+            expression: "generationId"
+
+          observed_time: "{{ now | date \"2006-01-02T15:04:05Z07:00\" }}"
+          
+          data:
+            namespace:
+              name:
+                expression: |
+                  resources.?clusterNamespace.?metadata.?name.orValue("")
+              status:
+                expression: |
+                  resources.?clusterNamespace.?status.?phase.orValue("")
+            serviceAccount:
+              name:
+                expression: |
+                  resources.?gcpServiceAccount.?metadata.?name.orValue("")
+              namespace:
+                expression: |
+                  resources.?gcpServiceAccount.?metadata.?namespace.orValue("")
+    # ============================================================================
+    # Post Actions
+    # ============================================================================
+    postActions:
+      - name: "reportClusterStatus"
+        apiCall:
+          method: "POST"
+          url: "{{ .hyperfleetApiBaseUrl }}/api/hyperfleet/{{ .hyperfleetApiVersion }}/clusters/{{ .clusterId }}/statuses"
+          body: "{{ .clusterStatusPayload }}"
+          timeout: 30s
+          retryAttempts: 3
+          retryBackoff: "exponential"
+          headers:
+            - name: "Content-Type"
+              value: "application/json"
