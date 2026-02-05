@@ -23,7 +23,7 @@ This test validates that the workflow can work correctly for nodepools resource 
 | **Automation** | Not Automated |
 | **Version** | MVP           |
 | **Created** | 2026-02-04    |
-| **Updated** | 2026-02-04    |
+| **Updated** | 2026-02-05    |
 
 
 ---
@@ -34,6 +34,7 @@ This test validates that the workflow can work correctly for nodepools resource 
 2. HyperFleet API and HyperFleet Sentinel services are deployed and running successfully
 3. The adapters defined in testdata/adapter-configs are all deployed successfully
 4. A cluster resource has been created and its cluster_id is available
+    - **Cleanup**: Cluster resource cleanup should be handled in test suite teardown where cluster was created
 
 ---
 
@@ -87,13 +88,13 @@ curl -X GET ${API_URL}/api/hyperfleet/v1/nodepools/{nodepool_id}
 #### Step 4: Cleanup resources
 
 **Action:**
-- Delete the namespace created for the parent cluster:
+- Delete nodepool-specific Kubernetes resources:
 ```bash
-kubectl delete namespace {cluster_id}
+kubectl delete -n {cluster_id} <nodepool-resources>
 ```
 
 **Expected Result:**
-- Namespace and all associated resources (including nodepool resources) are deleted successfully
+- Nodepool-specific resources are deleted successfully
 
 **Note:** This is a workaround cleanup method. Once CLM supports DELETE operations for "nodepools" resource type, this step should be replaced with:
 ```bash
@@ -118,7 +119,7 @@ This test verifies that the Kubernetes resources of different types (e.g., confi
 | **Automation** | Not Automated |
 | **Version** | MVP           |
 | **Created** | 2026-02-04    |
-| **Updated** | 2026-02-04    |
+| **Updated** | 2026-02-05    |
 
 
 ---
@@ -129,6 +130,7 @@ This test verifies that the Kubernetes resources of different types (e.g., confi
 2. HyperFleet API and HyperFleet Sentinel services are deployed and running successfully
 3. The adapters defined in testdata/adapter-configs are all deployed successfully
 4. A cluster resource has been created and its cluster_id is available
+    - **Cleanup**: Cluster resource cleanup should be handled in test suite teardown where cluster was created
 
 ---
 
@@ -157,13 +159,13 @@ curl -X POST ${API_URL}/api/hyperfleet/v1/nodepools \
 #### Step 3: Cleanup resources
 
 **Action:**
-- Delete the namespace created for the parent cluster:
+- Delete nodepool-specific Kubernetes resources:
 ```bash
-kubectl delete namespace {cluster_id}
+kubectl delete -n {cluster_id} <nodepool-resources>
 ```
 
 **Expected Result:**
-- Namespace and all associated resources (including nodepool resources) are deleted successfully
+- Nodepool-specific resources are deleted successfully
 
 **Note:** This is a workaround cleanup method. Once CLM supports DELETE operations for "nodepools" resource type, this step should be replaced with:
 ```bash
