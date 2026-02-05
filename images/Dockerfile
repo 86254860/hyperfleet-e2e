@@ -28,7 +28,7 @@ FROM ${BASE_IMAGE}
 
 # Install runtime dependencies and tools
 USER root
-RUN dnf -y install --allowerasing jq gettext curl && dnf clean all
+RUN dnf -y install jq gettext curl && dnf clean all
 
 # Install kubectl (latest stable)
 RUN curl -fsSL "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl" \
