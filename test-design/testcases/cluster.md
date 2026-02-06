@@ -39,6 +39,7 @@ This test validates that the workflow can work correctly for clusters resource t
 ### Test Steps
 
 #### Step 1: Submit a "clusters" resource type request via API
+
 **Action:**
 - Submit a POST request for "clusters" resource type:
 ```bash
@@ -51,7 +52,30 @@ curl -X POST ${API_URL}/api/hyperfleet/v1/clusters \
 - Response includes the created cluster ID and initial metadata
 - Initial cluster conditions have `status: False` for both condition `{"type": "Ready"}` and `{"type": "Available"}`
 
-#### Step 2: Verify adapter status
+#### Step 2: Verify initial status of cluster
+**Action:**
+- Poll cluster status for initial response
+```bash
+curl -X GET ${API_URL}/api/hyperfleet/v1/clusters/{cluster_id}
+```
+
+**Expected Result:**
+- Cluster `Ready` condition `status: False`
+- Cluster `Available` condition `status: False`
+
+#### Step 3: Monitor cluster workflow processing
+
+**Action:**
+- Poll cluster status to monitor workflow processing:
+```bash
+curl -X GET ${API_URL}/api/hyperfleet/v1/clusters/{cluster_id}
+```
+
+**Expected Result:**
+- Cluster `Ready` condition transitions from `status: False` to `status: True`
+- This indicates the workflow has processed the cluster request and configured adapters are executing
+
+#### Step 4: Verify adapter execution results
 
 **Action:**
 - Retrieve adapter statuses information:
@@ -61,29 +85,30 @@ curl -X GET ${API_URL}/api/hyperfleet/v1/clusters/{cluster_id}/statuses
 
 **Expected Result:**
 - Response returns HTTP 200 (OK) status code
-- Adapter status payload contains the following:
+- Each adapter has all required condition types: `Applied`, `Available`, `Health`
+- Each condition has `status: "True"` indicating successful execution
+- **Adapter condition metadata validation** (for each condition in adapter.conditions):
+  - `reason`: Non-empty string providing human-readable summary of the condition state
+  - `message`: Non-empty string with detailed human-readable description
+  - `last_transition_time`: Valid RFC3339 timestamp of the last status change
+- **Adapter status metadata validation** (for each adapter):
+  - `created_time`: Valid RFC3339 timestamp when the adapter status was first created
+  - `last_report_time`: Valid RFC3339 timestamp when the adapter last reported its status
+  - `observed_generation`: Non-nil integer value equal to 1 for new creation requests
 
-**Condition Types:**
-- All required condition types are present: `Applied`, `Available`, `Health`
-- Each condition has `status: "True"` when successful
-- `reason`: Human-readable summary of the condition state
-- `message`: Detailed human-readable description
-- `created_time`: Timestamp when the condition was first created
-- `last_transition_time`: Timestamp of the last status change
-- `last_updated_time`: Timestamp of the most recent update
-- `observed_generation`: Set to `1` for the initial cluster generation
-
-#### Step 3: Verify cluster final status
+#### Step 5: Verify final cluster state
 
 **Action:**
-- Retrieve cluster status information:
+- Retrieve final cluster status information:
 ```bash
 curl -X GET ${API_URL}/api/hyperfleet/v1/clusters/{cluster_id}
 ```
+
 **Expected Result:**
 - Final cluster conditions have `status: True` for both condition `{"type": "Ready"}` and `{"type": "Available"}`
+- This confirms the cluster has reached the desired end state
 
-#### Step 4: Cleanup resources
+#### Step 5: Cleanup resources
 
 **Action:**
 - Delete the namespace created for this cluster:

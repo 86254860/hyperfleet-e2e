@@ -1,6 +1,6 @@
 {
   "kind": "Cluster",
-  "name": "hp-gcp-cluster-{{.Random}}",
+  "name": "hp-cluster-{{.Random}}",
   "labels": {
     "environment": "production",
     "team": "platform"
