@@ -45,6 +45,9 @@ COPY --from=builder /build/bin/hyperfleet-e2e /usr/local/bin/
 # Copy test payloads and fixtures
 COPY --from=builder /build/testdata /e2e/testdata
 
+# Copy deploy scripts
+COPY --from=builder /build/deploy-scripts /e2e/deploy-scripts
+
 # Copy default config (fallback if ConfigMap is not mounted)
 COPY --from=builder /build/configs /e2e/configs
 

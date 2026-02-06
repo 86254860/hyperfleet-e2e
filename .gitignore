@@ -39,11 +39,13 @@ vendor/
 *.tmp
 *.bak
 *.log
+.deploy-work/
 
 # Environment files
 .env
 .env.local
 .env.*.local
+deploy-scripts/.env
 
 # Claude Code files
 .claude/
