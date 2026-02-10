@@ -40,9 +40,9 @@ This test validates that the workflow can work correctly for nodepools resource 
 
 ### Test Steps
 
-#### Step 1: Submit a "nodepools" resource type request via API
+#### Step 1: Submit an API request to create a NodePool resource
 **Action:**
-- Submit a POST request for "nodepools" resource type (with cluster_id in the payload):
+- Submit a POST request to create a NodePool resource (with cluster_id in the payload):
 ```bash
 curl -X POST ${API_URL}/api/hyperfleet/v1/nodepools \
   -H "Content-Type: application/json" \
@@ -136,9 +136,9 @@ This test verifies that the Kubernetes resources of different types (e.g., confi
 
 ### Test Steps
 
-#### Step 1: Submit a "nodepools" resource type request via API
+#### Step 1: Submit an API request to create a NodePool resource
 **Action:**
-- Execute nodepool creation request (with cluster_id in the payload):
+- Submit a POST request to create a NodePool resource (with cluster_id in the payload):
 ```bash
 curl -X POST ${API_URL}/api/hyperfleet/v1/nodepools \
   -H "Content-Type: application/json" \
