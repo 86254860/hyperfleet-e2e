@@ -11,7 +11,7 @@
 
 ### Description
 
-This test validates that the workflow can work correctly for clusters resource type. It verifies that when a cluster resource is created via the HyperFleet API, the system correctly processes the resource through its lifecycle, configured adapters execute successfully, and accurately reports status transitions back to the API. The test ensures the complete workflow of CLM can successfully handle clusters resource type requests end-to-end.
+This test validates that the workflow can work correctly for clusters resource type. It verifies that when a cluster resource is created via the HyperFleet API, the system correctly processes the resource through its lifecycle, required adapters (configured in the test config) execute successfully, and accurately reports status transitions back to the API. The test validates required adapters first to identify specific failures, then confirms the cluster reaches the final Ready and Available state. This approach ensures the complete workflow of CLM can successfully handle clusters resource type requests end-to-end.
 
 ---
 
@@ -19,11 +19,11 @@ This test validates that the workflow can work correctly for clusters resource t
 |-----------|---------------|
 | **Pos/Neg** | Positive      |
 | **Priority** | Tier0         |
-| **Status** | Draft         |
-| **Automation** | Not Automated |
+| **Status** | Automated     |
+| **Automation** | Automated     |
 | **Version** | MVP           |
 | **Created** | 2026-01-29    |
-| **Updated** | 2026-02-04    |
+| **Updated** | 2026-02-09    |
 
 
 ---
@@ -38,10 +38,10 @@ This test validates that the workflow can work correctly for clusters resource t
 
 ### Test Steps
 
-#### Step 1: Submit a "clusters" resource type request via API
+#### Step 1: Submit an API request to create a Cluster resource
 
 **Action:**
-- Submit a POST request for "clusters" resource type:
+- Submit a POST request to create a Cluster resource:
 ```bash
 curl -X POST ${API_URL}/api/hyperfleet/v1/clusters \
   -H "Content-Type: application/json" \
@@ -63,19 +63,7 @@ curl -X GET ${API_URL}/api/hyperfleet/v1/clusters/{cluster_id}
 - Cluster `Ready` condition `status: False`
 - Cluster `Available` condition `status: False`
 
-#### Step 3: Monitor cluster workflow processing
-
-**Action:**
-- Poll cluster status to monitor workflow processing:
-```bash
-curl -X GET ${API_URL}/api/hyperfleet/v1/clusters/{cluster_id}
-```
-
-**Expected Result:**
-- Cluster `Ready` condition transitions from `status: False` to `status: True`
-- This indicates the workflow has processed the cluster request and configured adapters are executing
-
-#### Step 4: Verify adapter execution results
+#### Step 3: Verify required adapter execution results
 
 **Action:**
 - Retrieve adapter statuses information:
@@ -85,27 +73,38 @@ curl -X GET ${API_URL}/api/hyperfleet/v1/clusters/{cluster_id}/statuses
 
 **Expected Result:**
 - Response returns HTTP 200 (OK) status code
-- Each adapter has all required condition types: `Applied`, `Available`, `Health`
+- All required adapters from config are present in the response:
+  - `clusters-namespace`
+  - `clusters-job`
+  - `clusters-deployment`
+- Each required adapter has all required condition types: `Applied`, `Available`, `Health`
 - Each condition has `status: "True"` indicating successful execution
 - **Adapter condition metadata validation** (for each condition in adapter.conditions):
   - `reason`: Non-empty string providing human-readable summary of the condition state
   - `message`: Non-empty string with detailed human-readable description
   - `last_transition_time`: Valid RFC3339 timestamp of the last status change
-- **Adapter status metadata validation** (for each adapter):
+- **Adapter status metadata validation** (for each required adapter):
   - `created_time`: Valid RFC3339 timestamp when the adapter status was first created
   - `last_report_time`: Valid RFC3339 timestamp when the adapter last reported its status
   - `observed_generation`: Non-nil integer value equal to 1 for new creation requests
 
-#### Step 5: Verify final cluster state
+**Note:** Required adapters are configurable via:
+- Config file: `configs/config.yaml` under `adapters.cluster`
+- Environment variable: `HYPERFLEET_ADAPTERS_CLUSTER` (comma-separated list)
+
+#### Step 4: Verify final cluster state
 
 **Action:**
+- Wait for cluster Ready condition to transition to True
 - Retrieve final cluster status information:
 ```bash
 curl -X GET ${API_URL}/api/hyperfleet/v1/clusters/{cluster_id}
 ```
 
 **Expected Result:**
+- Cluster `Ready` condition transitions from `status: False` to `status: True`
 - Final cluster conditions have `status: True` for both condition `{"type": "Ready"}` and `{"type": "Available"}`
+- Validate that the observedGeneration for the Ready and Available conditions is 1 for a new creation request
 - This confirms the cluster has reached the desired end state
 
 #### Step 5: Cleanup resources
@@ -157,9 +156,9 @@ This test verifies that the Kubernetes resources (namespace and job) can be succ
 
 ### Test Steps
 
-#### Step 1: Submit a "clusters" resource type request via API
+#### Step 1: Submit an API request to create a Cluster resource
 **Action:**
-- Execute cluster creation request:
+- Submit a POST request to create a Cluster resource:
 ```bash
 curl -X POST ${API_URL}/api/hyperfleet/v1/clusters \
   -H "Content-Type: application/json" \
@@ -225,9 +224,9 @@ This test validates that CLM correctly executes workflows with preinstalled depe
 
 ### Test Steps
 
-#### Step 1: Submit a "clusters" resource type request via API
+#### Step 1: Submit an API request to create a Cluster resource
 **Action:**
-- Execute cluster creation request:
+- Submit a POST request to create a Cluster resource:
 ```bash
 curl -X POST ${API_URL}/api/hyperfleet/v1/clusters \
   -H "Content-Type: application/json" \
@@ -264,7 +263,7 @@ curl -X GET ${API_URL}/api/hyperfleet/v1/clusters/{cluster_id}/statuses
 - Monitor adapter execution progress
 
 **Expected Result:**
-- Namespace is created by adapter 1
+- Adapter 1 creates Namespace
 - After adapter 2 executes completely, adapter 3 is in progress.
 - Adapters execute in correct order based on preconditions:
     1. Adapter 1 (namespace-creator) completes first

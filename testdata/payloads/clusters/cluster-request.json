@@ -3,6 +3,7 @@
   "name": "hp-cluster-{{.Random}}",
   "labels": {
     "environment": "production",
+    "shard": "1",
     "team": "platform"
   },
   "spec": {

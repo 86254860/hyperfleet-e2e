@@ -26,18 +26,16 @@ var _ = ginkgo.Describe(lifecycleTestName,
 
         // This test validates the end-to-end cluster lifecycle workflow:
         // 1. Cluster creation via API with initial condition validation
-        // 2. Workflow processing and Ready condition transition
-        // 3. Adapter execution with comprehensive metadata validation
-        // 4. Final cluster state verification
+        // 2. Required adapter execution with comprehensive metadata validation
+        // 3. Final cluster state verification (Ready and Available conditions)
         ginkgo.It("should validate complete workflow for clusters resource type from creation to Ready state",
             func(ctx context.Context) {
-                ginkgo.By("Submit a \"clusters\" resource type request via API")
+                ginkgo.By("Submit an API request to create a Cluster resource")
                 cluster, err := h.Client.CreateClusterFromPayload(ctx, "testdata/payloads/clusters/cluster-request.json")
                 Expect(err).NotTo(HaveOccurred(), "failed to create cluster")
                 Expect(cluster.Id).NotTo(BeNil(), "cluster ID should be generated")
                 clusterID = *cluster.Id
                 ginkgo.GinkgoWriter.Printf("Created cluster ID: %s\n", clusterID)
-
                 Expect(cluster.Status).NotTo(BeNil(), "cluster status should be present")
 
                 ginkgo.By("Verify initial status of cluster")
@@ -49,30 +47,30 @@ var _ = ginkgo.Describe(lifecycleTestName,
                     "initial cluster conditions should have Ready=False")
 
                 hasAvailableFalse := h.HasResourceCondition(cluster.Status.Conditions,
-                    "Available", openapi.ResourceConditionStatusFalse)
+                    client.ConditionTypeAvailable, openapi.ResourceConditionStatusFalse)
                 Expect(hasAvailableFalse).To(BeTrue(),
                     "initial cluster conditions should have Available=False")
 
-                ginkgo.By("Monitor cluster workflow processing")
-                err = h.WaitForClusterCondition(
-                    ctx,
-                    clusterID,
-                    client.ConditionTypeReady,
-                    openapi.ResourceConditionStatusTrue,
-                    h.Cfg.Timeouts.Cluster.Ready,
-                )
-                Expect(err).NotTo(HaveOccurred(), "cluster Ready condition should transition to True")
-
-                ginkgo.By("Verify adapter execution results")
-                // Validate all adapters that executed have completed successfully
-                // The cluster Ready condition ensures all required adapters have finished
+                ginkgo.By("Verify required adapter execution results")
+                // Validate required adapters from config have completed successfully
+                // If an adapter fails, we can identify which specific adapter failed
                 Eventually(func(g Gomega) {
                     statuses, err := h.Client.GetClusterStatuses(ctx, clusterID)
                     g.Expect(err).NotTo(HaveOccurred(), "failed to get cluster statuses")
                     g.Expect(statuses.Items).NotTo(BeEmpty(), "at least one adapter should have executed")
 
-                    // Validate each adapter has required conditions with correct status
+                    // Build a map of adapter statuses for easy lookup
+                    adapterMap := make(map[string]openapi.AdapterStatus)
                     for _, adapter := range statuses.Items {
+                        adapterMap[adapter.Adapter] = adapter
+                    }
+
+                    // Validate each required adapter from config
+                    for _, requiredAdapter := range h.Cfg.Adapters.Cluster {
+                        adapter, exists := adapterMap[requiredAdapter]
+                        g.Expect(exists).To(BeTrue(),
+                            "required adapter %s should be present in adapter statuses", requiredAdapter)
+
                         // Validate adapter-level metadata
                         g.Expect(adapter.CreatedTime).NotTo(BeZero(),
                             "adapter %s should have valid created_time", adapter.Adapter)
@@ -124,8 +122,17 @@ var _ = ginkgo.Describe(lifecycleTestName,
                 }, h.Cfg.Timeouts.Adapter.Processing, h.Cfg.Polling.Interval).Should(Succeed())
 
                 ginkgo.By("Verify final cluster state")
-                // Retrieve the final cluster state and confirm both Ready and Available conditions are True
+                // Wait for cluster Ready condition and verify both Ready and Available conditions are True
                 // This confirms the cluster has reached the desired end state
+                err = h.WaitForClusterCondition(
+                    ctx,
+                    clusterID,
+                    client.ConditionTypeReady,
+                    openapi.ResourceConditionStatusTrue,
+                    h.Cfg.Timeouts.Cluster.Ready,
+                )
+                Expect(err).NotTo(HaveOccurred(), "cluster Ready condition should transition to True")
+
                 finalCluster, err := h.Client.GetCluster(ctx, clusterID)
                 Expect(err).NotTo(HaveOccurred(), "failed to get final cluster state")
                 Expect(finalCluster.Status).NotTo(BeNil(), "cluster status should be present")
@@ -135,8 +142,16 @@ var _ = ginkgo.Describe(lifecycleTestName,
                 Expect(hasReady).To(BeTrue(), "cluster should have Ready=True condition")
 
                 hasAvailable := h.HasResourceCondition(finalCluster.Status.Conditions,
-                    "Available", openapi.ResourceConditionStatusTrue)
+                    client.ConditionTypeAvailable, openapi.ResourceConditionStatusTrue)
                 Expect(hasAvailable).To(BeTrue(), "cluster should have Available=True condition")
+
+                // Validate observedGeneration for Ready and Available conditions
+                for _, condition := range finalCluster.Status.Conditions {
+                    if condition.Type == client.ConditionTypeReady || condition.Type == client.ConditionTypeAvailable {
+                        Expect(condition.ObservedGeneration).To(Equal(int32(1)),
+                            "cluster condition %s should have observed_generation=1 for new creation request", condition.Type)
+                    }
+                }
             })
 
         ginkgo.AfterEach(func(ctx context.Context) {

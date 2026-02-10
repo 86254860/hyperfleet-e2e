@@ -85,3 +85,24 @@ log:
   # Log output: stdout, stderr
   # Can be overridden by: HYPERFLEET_LOG_OUTPUT
   output: stdout
+
+# ============================================================================
+# Adapter Configuration
+# ============================================================================
+
+adapters:
+  # Required adapters for cluster resources
+  # List of adapter names that must be present and have correct conditions
+  # when validating cluster adapter execution
+  #
+  # Can be overridden by: HYPERFLEET_ADAPTERS_CLUSTER (comma-separated)
+  cluster:
+    - "cl-namespace"
+
+  # Required adapters for nodepool resources
+  # List of adapter names that must be present and have correct conditions
+  # when validating nodepool adapter execution
+  #
+  # Can be overridden by: HYPERFLEET_ADAPTERS_NODEPOOL (comma-separated)
+  nodepool:
+    - "np-configmap"
