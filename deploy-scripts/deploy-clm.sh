@@ -1,0 +1,459 @@
+#!/usr/bin/env bash
+
+# deploy-clm.sh - Automated CLM Components Deployment Script
+#
+# This script automates the installation and uninstallation of HyperFleet CLM components
+# (API, Sentinel, and Adapters) using Helm for E2E testing environments.
+#
+# Usage:
+#   ./deploy-clm.sh --action install --namespace hyperfleet-e2e
+#   ./deploy-clm.sh --action uninstall --namespace hyperfleet-e2e --dry-run
+
+set -euo pipefail
+
+# ============================================================================
+# Working Directories (must be set before loading .env)
+# ============================================================================
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+WORK_DIR="${PROJECT_ROOT}/.deploy-work"
+TESTDATA_DIR="${PROJECT_ROOT}/testdata"
+
+# ============================================================================
+# Load Environment Variables from .env file
+# ============================================================================
+ENV_FILE="${SCRIPT_DIR}/.env"
+
+if [[ -f "${ENV_FILE}" ]]; then
+    set -a  # automatically export all variables
+    source "${ENV_FILE}"
+    set +a
+else
+    echo "[WARNING] .env file not found at ${ENV_FILE}"
+    echo "[WARNING] Using default configuration values"
+fi
+
+# ============================================================================
+# Default Configuration (fallback if .env is not loaded)
+# ============================================================================
+
+ACTION="${ACTION:-}"
+NAMESPACE="${NAMESPACE:-hyperfleet-e2e}"
+DRY_RUN="${DRY_RUN:-false}"
+VERBOSE="${VERBOSE:-false}"
+
+# Image Registry
+IMAGE_REGISTRY="${IMAGE_REGISTRY:-registry.ci.openshift.org/ci}"
+
+# Provider Configuration
+GCP_PROJECT_ID="${GCP_PROJECT_ID:-hcm-hyperfleet}"
+
+# API Component
+API_IMAGE_REPO="${API_IMAGE_REPO:-hyperfleet-api}"
+API_IMAGE_TAG="${API_IMAGE_TAG:-latest}"
+API_SERVICE_TYPE="${API_SERVICE_TYPE:-LoadBalancer}"
+API_ADAPTERS_CLUSTER="${API_ADAPTERS_CLUSTER:-}"
+API_ADAPTERS_NODEPOOL="${API_ADAPTERS_NODEPOOL:-}"
+
+# Sentinel Component
+SENTINEL_IMAGE_REPO="${SENTINEL_IMAGE_REPO:-hyperfleet-sentinel}"
+SENTINEL_IMAGE_TAG="${SENTINEL_IMAGE_TAG:-latest}"
+SENTINEL_BROKER_TYPE="${SENTINEL_BROKER_TYPE:-googlepubsub}"
+SENTINEL_GOOGLEPUBSUB_CREATE_TOPIC_IF_MISSING="${SENTINEL_GOOGLEPUBSUB_CREATE_TOPIC_IF_MISSING:-true}"
+
+# Adapter Component
+ADAPTER_IMAGE_REPO="${ADAPTER_IMAGE_REPO:-hyperfleet-adapter}"
+ADAPTER_IMAGE_TAG="${ADAPTER_IMAGE_TAG:-latest}"
+ADAPTER_GOOGLEPUBSUB_CREATE_TOPIC_IF_MISSING="${ADAPTER_GOOGLEPUBSUB_CREATE_TOPIC_IF_MISSING:-true}"
+ADAPTER_GOOGLEPUBSUB_CREATE_SUBSCRIPTION_IF_MISSING="${ADAPTER_GOOGLEPUBSUB_CREATE_SUBSCRIPTION_IF_MISSING:-true}"
+
+# HyperFleet API Configuration
+API_BASE_URL="${API_BASE_URL:-http://hyperfleet-api:8000}"
+
+# Release name prefix
+RELEASE_PREFIX="${RELEASE_PREFIX:-hyperfleet}"
+
+# Helm Chart Sources
+API_CHART_REPO="${API_CHART_REPO:-https://github.com/openshift-hyperfleet/hyperfleet-api.git}"
+API_CHART_REF="${API_CHART_REF:-main}"
+API_CHART_PATH="${API_CHART_PATH:-charts}"
+
+SENTINEL_CHART_REPO="${SENTINEL_CHART_REPO:-https://github.com/openshift-hyperfleet/hyperfleet-sentinel.git}"
+SENTINEL_CHART_REF="${SENTINEL_CHART_REF:-main}"
+SENTINEL_CHART_PATH="${SENTINEL_CHART_PATH:-deployments/helm/sentinel}"
+
+ADAPTER_CHART_REPO="${ADAPTER_CHART_REPO:-https://github.com/openshift-hyperfleet/hyperfleet-adapter.git}"
+ADAPTER_CHART_REF="${ADAPTER_CHART_REF:-main}"
+ADAPTER_CHART_PATH="${ADAPTER_CHART_PATH:-charts}"
+
+# Component flags
+INSTALL_API="${INSTALL_API:-true}"
+INSTALL_SENTINEL="${INSTALL_SENTINEL:-true}"
+INSTALL_ADAPTER="${INSTALL_ADAPTER:-true}"
+
+# ============================================================================
+# Load Library Modules
+# ============================================================================
+
+source "${SCRIPT_DIR}/lib/common.sh"
+source "${SCRIPT_DIR}/lib/helm.sh"
+source "${SCRIPT_DIR}/lib/api.sh"
+source "${SCRIPT_DIR}/lib/sentinel.sh"
+source "${SCRIPT_DIR}/lib/adapter.sh"
+
+# ============================================================================
+# Usage and Argument Parsing
+# ============================================================================
+
+print_usage() {
+    cat << EOF
+Usage: ${0##*/} --action <install|uninstall> [OPTIONS]
+
+Automated deployment script for HyperFleet CLM components (API, Sentinel, Adapter)
+
+CONFIGURATION:
+    This script loads configuration from ${SCRIPT_DIR}/.env file.
+    You can override any .env value using command-line flags.
+
+REQUIRED FLAGS:
+    --action <action>               Action to perform: install or uninstall
+
+OPTIONAL FLAGS:
+    --namespace <namespace>         Kubernetes namespace (default: hyperfleet-e2e)
+
+    # Component Selection
+    --skip-api                      Skip API installation
+    --skip-sentinel                 Skip Sentinel installation
+    --skip-adapter                  Skip Adapter installation
+
+    # Image Configuration
+    --image-registry <registry>     Image registry (default: ${IMAGE_REGISTRY})
+    --api-image-repo <repo>         API image repository (default: ${API_IMAGE_REPO})
+    --api-image-tag <tag>           API image tag (default: ${API_IMAGE_TAG})
+    --sentinel-image-repo <repo>    Sentinel image repository (default: ${SENTINEL_IMAGE_REPO})
+    --sentinel-image-tag <tag>      Sentinel image tag (default: ${SENTINEL_IMAGE_TAG})
+    --adapter-image-repo <repo>     Adapter image repository (default: ${ADAPTER_IMAGE_REPO})
+    --adapter-image-tag <tag>       Adapter image tag (default: ${ADAPTER_IMAGE_TAG})
+
+    # API Configuration
+    --api-base-url <url>            HyperFleet API base URL for Sentinel and Adapter
+                                    (default: http://hyperfleet-api.<namespace>.svc.cluster.local:8000)
+    --api-adapters-cluster <list>   Comma-separated list of cluster adapters (e.g., "example1,validation")
+    --api-adapters-nodepool <list>  Comma-separated list of nodepool adapters (e.g., "validation,hypershift")
+
+    # Release Configuration
+    --release-prefix <prefix>       Release name prefix (default: hyperfleet)
+                                    Components will be named: <prefix>-api, <prefix>-sentinel, <prefix>-adapter
+
+    # Execution Options
+    --dry-run                       Print commands without executing
+    --verbose                       Enable verbose logging
+    --help                          Show this help message
+
+ENVIRONMENT VARIABLES:
+    All configuration can be set in the .env file located at: ${SCRIPT_DIR}/.env
+
+    Common variables:
+    - NAMESPACE                     Kubernetes namespace
+    - IMAGE_REGISTRY                Container image registry
+    - API_IMAGE_TAG                 API image tag
+    - SENTINEL_IMAGE_TAG            Sentinel image tag
+    - ADAPTER_IMAGE_TAG             Adapter image tag
+    - GCP_PROJECT_ID                Google Cloud Project ID for Pub/Sub
+
+EXAMPLES:
+    # Install all components with default settings
+    ${0##*/} --action install --namespace hyperfleet-e2e
+
+    # Install with custom image tags
+    ${0##*/} --action install \\
+        --namespace test-env \\
+        --api-image-tag v1.0.0 \\
+        --sentinel-image-tag v1.0.0 \\
+        --adapter-image-tag v1.0.0
+
+    # Install only API and Sentinel
+    ${0##*/} --action install --skip-adapter
+
+    # Dry-run uninstallation
+    ${0##*/} --action uninstall --namespace hyperfleet-e2e --dry-run --verbose
+
+    # Install with custom image repositories
+    ${0##*/} --action install \\
+        --api-image-repo myregistry.io/hyperfleet-api \\
+        --api-image-tag dev-123
+
+EOF
+}
+
+parse_arguments() {
+    if [[ $# -eq 0 ]]; then
+        print_usage
+        exit 1
+    fi
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --action)
+                ACTION="$2"
+                shift 2
+                ;;
+            --namespace)
+                NAMESPACE="$2"
+                shift 2
+                ;;
+            --skip-api)
+                INSTALL_API=false
+                shift
+                ;;
+            --skip-sentinel)
+                INSTALL_SENTINEL=false
+                shift
+                ;;
+            --skip-adapter)
+                INSTALL_ADAPTER=false
+                shift
+                ;;
+            --image-registry)
+                IMAGE_REGISTRY="$2"
+                shift 2
+                ;;
+            --api-image-repo)
+                API_IMAGE_REPO="$2"
+                shift 2
+                ;;
+            --api-image-tag)
+                API_IMAGE_TAG="$2"
+                shift 2
+                ;;
+            --sentinel-image-repo)
+                SENTINEL_IMAGE_REPO="$2"
+                shift 2
+                ;;
+            --sentinel-image-tag)
+                SENTINEL_IMAGE_TAG="$2"
+                shift 2
+                ;;
+            --adapter-image-repo)
+                ADAPTER_IMAGE_REPO="$2"
+                shift 2
+                ;;
+            --adapter-image-tag)
+                ADAPTER_IMAGE_TAG="$2"
+                shift 2
+                ;;
+            --api-base-url)
+                API_BASE_URL="$2"
+                shift 2
+                ;;
+            --api-adapters-cluster)
+                API_ADAPTERS_CLUSTER="$2"
+                shift 2
+                ;;
+            --api-adapters-nodepool)
+                API_ADAPTERS_NODEPOOL="$2"
+                shift 2
+                ;;
+            --release-prefix)
+                RELEASE_PREFIX="$2"
+                shift 2
+                ;;
+            --dry-run)
+                DRY_RUN=true
+                shift
+                ;;
+            --verbose)
+                VERBOSE=true
+                shift
+                ;;
+            --help|-h)
+                print_usage
+                exit 0
+                ;;
+            *)
+                log_error "Unknown option: $1"
+                echo
+                print_usage
+                exit 1
+                ;;
+        esac
+    done
+
+    # Validate required arguments
+    if [[ -z "${ACTION}" ]]; then
+        log_error "Missing required flag: --action"
+        echo
+        print_usage
+        exit 1
+    fi
+
+    if [[ "${ACTION}" != "install" && "${ACTION}" != "uninstall" ]]; then
+        log_error "Invalid action: ${ACTION}. Must be 'install' or 'uninstall'"
+        exit 1
+    fi
+
+    # Validate at least one component is selected
+    if [[ "${INSTALL_API}" == "false" && "${INSTALL_SENTINEL}" == "false" && "${INSTALL_ADAPTER}" == "false" ]]; then
+        log_error "At least one component must be selected for installation"
+        exit 1
+    fi
+}
+
+# ============================================================================
+# Main Installation Flow
+# ============================================================================
+
+perform_install() {
+    log_section "Starting CLM Components Installation"
+
+    # Validate environment
+    check_dependencies || exit 1
+    validate_kubectl_context || exit 1
+
+    # Prepare working directory
+    log_section "Preparing Working Directory"
+    mkdir -p "${WORK_DIR}"
+    log_verbose "Work directory: ${WORK_DIR}"
+
+    # Clone Helm charts
+    log_section "Cloning Helm Charts"
+
+    if [[ "${INSTALL_API}" == "true" ]]; then
+        clone_helm_chart "api" "${API_CHART_REPO}" "${API_CHART_REF}" "${API_CHART_PATH}" || exit 1
+    fi
+
+    if [[ "${INSTALL_SENTINEL}" == "true" ]]; then
+        clone_helm_chart "sentinel" "${SENTINEL_CHART_REPO}" "${SENTINEL_CHART_REF}" "${SENTINEL_CHART_PATH}" || exit 1
+    fi
+
+    if [[ "${INSTALL_ADAPTER}" == "true" ]]; then
+        clone_helm_chart "adapter" "${ADAPTER_CHART_REPO}" "${ADAPTER_CHART_REF}" "${ADAPTER_CHART_PATH}" || exit 1
+    fi
+
+    # Install components in order: API -> Sentinel -> Adapter
+    if [[ "${INSTALL_API}" == "true" ]]; then
+        install_api || exit 1
+    fi
+
+    if [[ "${INSTALL_SENTINEL}" == "true" ]]; then
+        install_sentinel || exit 1
+    fi
+
+    if [[ "${INSTALL_ADAPTER}" == "true" ]]; then
+        install_adapters || {
+            log_error "Adapter installation failed"
+            log_section "Installation Failed"
+            exit 1
+        }
+    fi
+
+    # Final status
+    log_section "Installation Complete"
+
+    if [[ "${DRY_RUN}" == "false" ]]; then
+        log_info "Deployed components:"
+        helm list -n "${NAMESPACE}"
+
+        echo
+        log_info "Pod status:"
+        kubectl get pods -n "${NAMESPACE}"
+
+        echo
+        log_success "All components installed successfully!"
+        log_info "Namespace: ${NAMESPACE}"
+        log_info "To view logs: kubectl logs -n ${NAMESPACE} -l app.kubernetes.io/name=<component>"
+
+        # Display API external IP if available
+        if [[ "${INSTALL_API}" == "true" ]]; then
+            local external_ip
+            external_ip=$(kubectl get svc "${RELEASE_PREFIX}-api" -n "${NAMESPACE}" -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null)
+            if [[ -n "${external_ip}" ]]; then
+                echo
+                log_info "HyperFleet API External IP: ${external_ip}"
+                log_info "API URL: http://${external_ip}:8000"
+            fi
+        fi
+    else
+        log_info "[DRY-RUN] Installation simulation complete"
+    fi
+
+    # Clean up work directory
+    if [[ "${DRY_RUN}" == "false" && "${VERBOSE}" == "false" ]]; then
+        log_verbose "Cleaning up work directory"
+        rm -rf "${WORK_DIR}"
+    fi
+}
+
+# ============================================================================
+# Main Uninstallation Flow
+# ============================================================================
+
+perform_uninstall() {
+    log_section "Starting CLM Components Uninstallation"
+
+    # Validate environment
+    check_dependencies || exit 1
+    validate_kubectl_context || exit 1
+
+    # Uninstall components in reverse order: Adapter -> Sentinel -> API
+    if [[ "${INSTALL_ADAPTER}" == "true" ]]; then
+        uninstall_adapters
+    fi
+
+    if [[ "${INSTALL_SENTINEL}" == "true" ]]; then
+        uninstall_sentinel
+    fi
+
+    if [[ "${INSTALL_API}" == "true" ]]; then
+        uninstall_api || log_warning "Failed to uninstall API"
+    fi
+
+    # Final status
+    log_section "Uninstallation Complete"
+
+    if [[ "${DRY_RUN}" == "false" ]]; then
+        log_success "All components uninstalled successfully!"
+    else
+        log_info "[DRY-RUN] Uninstallation simulation complete"
+    fi
+
+    # Clean up work directory
+    if [[ -d "${WORK_DIR}" ]]; then
+        log_verbose "Cleaning up work directory"
+        rm -rf "${WORK_DIR}"
+    fi
+}
+
+# ============================================================================
+# Main Entry Point
+# ============================================================================
+
+main() {
+    parse_arguments "$@"
+
+    log_section "CLM Components Deployment Script"
+    log_info "Action: ${ACTION}"
+    log_info "Namespace: ${NAMESPACE}"
+    log_info "Dry-run: ${DRY_RUN}"
+    log_info "Verbose: ${VERBOSE}"
+
+    if [[ "${VERBOSE}" == "true" ]]; then
+        echo
+        log_verbose "Component Configuration:"
+        log_verbose "  API: ${INSTALL_API} (${API_IMAGE_REPO}:${API_IMAGE_TAG})"
+        log_verbose "  Sentinel: ${INSTALL_SENTINEL} (${SENTINEL_IMAGE_REPO}:${SENTINEL_IMAGE_TAG})"
+        log_verbose "  Adapter: ${INSTALL_ADAPTER} (${ADAPTER_IMAGE_REPO}:${ADAPTER_IMAGE_TAG})"
+    fi
+
+    case "${ACTION}" in
+        install)
+            perform_install
+            ;;
+        uninstall)
+            perform_uninstall
+            ;;
+    esac
+}
+
+# Run main function
+main "$@"
