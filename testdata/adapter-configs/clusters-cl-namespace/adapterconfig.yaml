@@ -1,0 +1,28 @@
+apiVersion: hyperfleet.redhat.com/v1alpha1
+kind: AdapterConfig
+metadata:
+  name: cl-namespace
+  labels:
+    hyperfleet.io/adapter-type: cl-namespace
+    hyperfleet.io/component: adapter
+spec:
+  adapter:
+    version: "0.1.0"
+
+  # Log the full merged configuration after load (default: false)
+  debugConfig: false
+
+  clients:
+    hyperfleetApi:
+      baseUrl: CHANGE_ME
+      version: v1
+      timeout: 2s
+      retryAttempts: 3
+      retryBackoff: exponential
+
+    broker:
+      subscriptionId: CHANGE_ME
+      topic: CHANGE_ME
+
+    kubernetes:
+      apiVersion: "v1"
