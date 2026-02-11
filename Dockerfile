@@ -23,6 +23,8 @@ RUN make build GIT_COMMIT=${GIT_COMMIT}
 
 RUN chmod +x /build/bin/hyperfleet-e2e  
 
+FROM registry.ci.openshift.org/ci/hyperfleet-credential-provider:latest AS hyperfleet-credential-provider
+
 # Runtime stage
 FROM ${BASE_IMAGE}
 
@@ -38,6 +40,9 @@ RUN curl -fsSL "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release
 RUN curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
 
 WORKDIR /e2e
+
+# Copy the hyperfleet-credential-provider binary
+COPY --from=hyperfleet-credential-provider /app/hyperfleet-credential-provider /usr/local/bin/
 
 # Copy binary from builder (make build outputs to bin/)
 COPY --from=builder /build/bin/hyperfleet-e2e /usr/local/bin/
