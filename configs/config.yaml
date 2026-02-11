@@ -98,6 +98,8 @@ adapters:
   # Can be overridden by: HYPERFLEET_ADAPTERS_CLUSTER (comma-separated)
   cluster:
     - "cl-namespace"
+    - "cl-job"
+    - "cl-deployment"
 
   # Required adapters for nodepool resources
   # List of adapter names that must be present and have correct conditions
