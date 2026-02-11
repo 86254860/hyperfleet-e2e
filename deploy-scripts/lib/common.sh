@@ -183,3 +183,36 @@ verify_pod_health() {
     kubectl get pods -n "${namespace}" -l "${selector}"
     return 1
 }
+
+# ============================================================================
+# Namespace Management
+# ============================================================================
+
+delete_namespace() {
+    local namespace="$1"
+
+    log_section "Deleting Namespace"
+
+    # Check if namespace exists
+    if ! kubectl get namespace "${namespace}" &> /dev/null; then
+        log_warning "Namespace '${namespace}' does not exist"
+        return 0
+    fi
+
+    if [[ "${DRY_RUN}" == "true" ]]; then
+        log_info "[DRY-RUN] Would delete namespace: ${namespace}"
+        return 0
+    fi
+
+    log_info "Deleting namespace: ${namespace}"
+    log_warning "This will remove all resources in the namespace"
+
+    if kubectl delete namespace "${namespace}" --wait --timeout=5m; then
+        log_success "Namespace '${namespace}' deleted successfully"
+        return 0
+    else
+        log_error "Failed to delete namespace '${namespace}'"
+        log_info "You may need to manually remove finalizers or check for stuck resources"
+        return 1
+    fi
+}

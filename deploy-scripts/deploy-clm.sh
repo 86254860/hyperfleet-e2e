@@ -91,6 +91,11 @@ INSTALL_API="${INSTALL_API:-true}"
 INSTALL_SENTINEL="${INSTALL_SENTINEL:-true}"
 INSTALL_ADAPTER="${INSTALL_ADAPTER:-true}"
 
+# Uninstall options
+DELETE_K8S_RESOURCES="${DELETE_K8S_RESOURCES:-false}"
+DELETE_CLOUD_RESOURCES="${DELETE_CLOUD_RESOURCES:-false}"
+DELETE_ALL="${DELETE_ALL:-false}"
+
 # ============================================================================
 # Load Library Modules
 # ============================================================================
@@ -100,6 +105,7 @@ source "${SCRIPT_DIR}/lib/helm.sh"
 source "${SCRIPT_DIR}/lib/api.sh"
 source "${SCRIPT_DIR}/lib/sentinel.sh"
 source "${SCRIPT_DIR}/lib/adapter.sh"
+source "${SCRIPT_DIR}/lib/gcp.sh"
 
 # ============================================================================
 # Usage and Argument Parsing
@@ -145,6 +151,11 @@ OPTIONAL FLAGS:
     --release-prefix <prefix>       Release name prefix (default: hyperfleet)
                                     Components will be named: <prefix>-api, <prefix>-sentinel, <prefix>-adapter
 
+    # Uninstall Options (only for --action uninstall)
+    --delete-k8s-resources          Delete Kubernetes resources (Helm releases + namespace)
+    --delete-cloud-resources        Delete GCP Pub/Sub topics and subscriptions
+    --all                           Delete everything (k8s resources + cloud resources)
+
     # Execution Options
     --dry-run                       Print commands without executing
     --verbose                       Enable verbose logging
@@ -177,6 +188,20 @@ EXAMPLES:
 
     # Dry-run uninstallation
     ${0##*/} --action uninstall --namespace hyperfleet-e2e --dry-run --verbose
+
+    # Delete Kubernetes resources (Helm releases + namespace)
+    ${0##*/} --action uninstall --namespace hyperfleet-e2e --delete-k8s-resources
+
+    # Delete GCP Pub/Sub resources (topics and subscriptions)
+    ${0##*/} --action uninstall --namespace hyperfleet-e2e --delete-cloud-resources
+
+    # Complete cleanup: delete everything (k8s + cloud resources)
+    ${0##*/} --action uninstall --namespace hyperfleet-e2e --all
+
+    # Or explicitly specify both
+    ${0##*/} --action uninstall --namespace hyperfleet-e2e \\
+        --delete-k8s-resources \\
+        --delete-cloud-resources
 
     # Install with custom image repositories
     ${0##*/} --action install \\
@@ -257,6 +282,20 @@ parse_arguments() {
             --release-prefix)
                 RELEASE_PREFIX="$2"
                 shift 2
+                ;;
+            --delete-k8s-resources)
+                DELETE_K8S_RESOURCES=true
+                shift
+                ;;
+            --delete-cloud-resources)
+                DELETE_CLOUD_RESOURCES=true
+                shift
+                ;;
+            --all)
+                DELETE_ALL=true
+                DELETE_K8S_RESOURCES=true
+                DELETE_CLOUD_RESOURCES=true
+                shift
                 ;;
             --dry-run)
                 DRY_RUN=true
@@ -395,24 +434,74 @@ perform_uninstall() {
     check_dependencies || exit 1
     validate_kubectl_context || exit 1
 
-    # Uninstall components in reverse order: Adapter -> Sentinel -> API
-    if [[ "${INSTALL_ADAPTER}" == "true" ]]; then
-        uninstall_adapters
+    # Display uninstall configuration
+    log_info "Uninstall Configuration:"
+    log_info "  Delete K8s Resources (including namespace): ${DELETE_K8S_RESOURCES}"
+    log_info "  Delete Cloud Resources: ${DELETE_CLOUD_RESOURCES}"
+
+    local uninstall_errors=0
+
+    # Uninstall Kubernetes resources (in reverse order: Adapter -> Sentinel -> API)
+    if [[ "${DELETE_K8S_RESOURCES}" == "true" ]]; then
+        log_section "Uninstalling Kubernetes Resources"
+
+        if [[ "${INSTALL_ADAPTER}" == "true" ]]; then
+            if ! uninstall_adapters; then
+                ((uninstall_errors++))
+            fi
+        fi
+
+        if [[ "${INSTALL_SENTINEL}" == "true" ]]; then
+            if ! uninstall_sentinel; then
+                ((uninstall_errors++))
+            fi
+        fi
+
+        if [[ "${INSTALL_API}" == "true" ]]; then
+            if ! uninstall_api; then
+                log_warning "Failed to uninstall API"
+                ((uninstall_errors++))
+            fi
+        fi
+
+        # Delete namespace (this will remove any remaining k8s resources)
+        if ! delete_namespace "${NAMESPACE}"; then
+            log_warning "Failed to delete namespace"
+            ((uninstall_errors++))
+        fi
+    else
+        log_info "Skipping Kubernetes resource deletion (use --delete-k8s-resources to enable)"
     fi
 
-    if [[ "${INSTALL_SENTINEL}" == "true" ]]; then
-        uninstall_sentinel
-    fi
-
-    if [[ "${INSTALL_API}" == "true" ]]; then
-        uninstall_api || log_warning "Failed to uninstall API"
+    # Delete GCP resources (topics and subscriptions)
+    if [[ "${DELETE_CLOUD_RESOURCES}" == "true" ]]; then
+        log_section "Deleting Cloud Provider Resources"
+        if ! cleanup_gcp_resources "${NAMESPACE}"; then
+            log_warning "Some GCP resources failed to delete"
+            ((uninstall_errors++))
+        fi
+    else
+        log_info "Skipping cloud resource deletion (use --delete-cloud-resources to enable)"
     fi
 
     # Final status
     log_section "Uninstallation Complete"
 
     if [[ "${DRY_RUN}" == "false" ]]; then
-        log_success "All components uninstalled successfully!"
+        # Show summary of what was deleted
+        echo
+        log_info "Summary:"
+        [[ "${DELETE_K8S_RESOURCES}" == "true" ]] && log_info "  ✓ K8s resources and namespace"
+        [[ "${DELETE_CLOUD_RESOURCES}" == "true" ]] && log_info "  ✓ Cloud resources"
+
+        echo
+        if [[ ${uninstall_errors} -eq 0 ]]; then
+            log_success "Uninstallation completed successfully!"
+        else
+            log_error "Uninstallation completed with ${uninstall_errors} error(s)"
+            log_error "Please check the logs above for details"
+            exit 1
+        fi
     else
         log_info "[DRY-RUN] Uninstallation simulation complete"
     fi
