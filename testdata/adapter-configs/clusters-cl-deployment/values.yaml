@@ -1,14 +1,15 @@
 adapterConfig:
   create: true
   files:
-    adapter-config.yaml: clusters-cl-namespace/adapter-config.yaml
+    adapter-config.yaml: clusters-cl-deployment/adapter-config.yaml
   log:
     level: debug
 
 adapterTaskConfig:
   create: true
   files:
-    task-config.yaml: clusters-cl-namespace/adapter-task-config.yaml
+    task-config.yaml: clusters-cl-deployment/adapter-task-config.yaml
+    deployment.yaml: clusters-cl-deployment/adapter-task-resource-deployment.yaml
 
 broker:
   create: true
@@ -26,12 +27,5 @@ image:
 
 rbac:
    resources:
-     - namespaces
-     - serviceaccounts
-     - configmaps
      - deployments
-     - roles
-     - rolebindings
-     - jobs
-     - jobs/status
-     - pods
+     - deployments/status

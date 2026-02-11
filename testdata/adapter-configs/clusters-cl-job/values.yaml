@@ -1,14 +1,18 @@
 adapterConfig:
   create: true
   files:
-    adapter-config.yaml: clusters-cl-namespace/adapter-config.yaml
+    adapter-config.yaml: clusters-cl-job/adapter-config.yaml
   log:
     level: debug
 
 adapterTaskConfig:
   create: true
   files:
-    task-config.yaml: clusters-cl-namespace/adapter-task-config.yaml
+    task-config.yaml: clusters-cl-job/adapter-task-config.yaml
+    job.yaml: clusters-cl-job/adapter-task-resource-job.yaml
+    job-serviceaccount.yaml: clusters-cl-job/adapter-task-resource-job-serviceaccount.yaml
+    job-role.yaml: clusters-cl-job/adapter-task-resource-job-role.yaml
+    job-rolebinding.yaml: clusters-cl-job/adapter-task-resource-job-rolebinding.yaml
 
 broker:
   create: true
@@ -28,8 +32,6 @@ rbac:
    resources:
      - namespaces
      - serviceaccounts
-     - configmaps
-     - deployments
      - roles
      - rolebindings
      - jobs
