@@ -60,6 +60,13 @@ install_sentinel_instance() {
         --set "broker.googlepubsub.createTopicIfMissing=${SENTINEL_GOOGLEPUBSUB_CREATE_TOPIC_IF_MISSING}"
     )
 
+    # Add message_data.owner_references configuration for nodepools resource type
+    # This enables the sentinel to include ownerReferences from the Kubernetes resource
+    # in the message data sent to adapters, which is required for nodepools management
+    if [[ "${resource_type}" == "nodepools" ]]; then
+        helm_cmd+=(--set "config.message_data.owner_references=.owner_references")
+    fi
+
     log_info "Executing: ${helm_cmd[*]}"
 
     if "${helm_cmd[@]}"; then
