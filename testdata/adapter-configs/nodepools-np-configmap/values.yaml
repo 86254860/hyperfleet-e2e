@@ -1,0 +1,31 @@
+adapterConfig:
+  create: true
+  files:
+    adapter-config.yaml: nodepools-np-configmap/adapter-config.yaml
+  log:
+    level: debug
+
+adapterTaskConfig:
+  create: true
+  files:
+    task-config.yaml: nodepools-np-configmap/adapter-task-config.yaml
+    configmap.yaml: nodepools-np-configmap/adapter-task-resource-configmap.yaml
+
+broker:
+  create: true
+  googlepubsub:
+    projectId: CHANGE_ME
+    subscriptionId: CHANGE_ME
+    topic: CHANGE_ME
+    deadLetterTopic: CHANGE_ME
+
+image:
+  registry: CHANGE_ME
+  repository: hyperfleet-adapter
+  pullPolicy: Always
+  tag: latest
+
+rbac:
+   resources:
+     - configmaps
+     - configmaps/status
