@@ -47,7 +47,7 @@ timeouts:
 
   adapter:
     # Maximum time to wait for adapter processing
-    # Recommended: 1m
+    # Recommended: 2m
     #
     # Format: Duration string
     # Can be overridden by: HYPERFLEET_TIMEOUTS_ADAPTER_PROCESSING

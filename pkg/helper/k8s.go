@@ -86,11 +86,21 @@ func (h *Helper) VerifyJobComplete(ctx context.Context, namespace string, expect
     labelSelector := buildLabelSelector(expectedLabels)
     logger.Info("verifying job status", "namespace", namespace, "label_selector", labelSelector)
 
+    // Validate inputs to prevent command injection
+    if err := ValidateK8sName(namespace); err != nil {
+        return fmt.Errorf("invalid namespace: %w", err)
+    }
+    if err := ValidateLabelSelector(labelSelector); err != nil {
+        return fmt.Errorf("invalid label selector: %w", err)
+    }
+
     // Create context with timeout
     cmdCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
     defer cancel()
 
     // Get job by label selector
+    // TODO: Consider using Kubernetes client-go library instead of kubectl CLI
+    // #nosec G204 -- namespace and labelSelector are validated above to prevent command injection
     cmd := exec.CommandContext(cmdCtx, "kubectl", "get", "job",
         "-n", namespace,
         "-l", labelSelector,
@@ -176,11 +186,21 @@ func (h *Helper) VerifyDeploymentAvailable(ctx context.Context, namespace string
     labelSelector := buildLabelSelector(expectedLabels)
     logger.Info("verifying deployment status", "namespace", namespace, "label_selector", labelSelector)
 
+    // Validate inputs to prevent command injection
+    if err := ValidateK8sName(namespace); err != nil {
+        return fmt.Errorf("invalid namespace: %w", err)
+    }
+    if err := ValidateLabelSelector(labelSelector); err != nil {
+        return fmt.Errorf("invalid label selector: %w", err)
+    }
+
     // Create context with timeout
     cmdCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
     defer cancel()
 
     // Get deployment by label selector
+    // TODO: Consider using Kubernetes client-go library instead of kubectl CLI
+    // #nosec G204 -- namespace and labelSelector are validated above to prevent command injection
     cmd := exec.CommandContext(cmdCtx, "kubectl", "get", "deployment",
         "-n", namespace,
         "-l", labelSelector,
