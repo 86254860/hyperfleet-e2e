@@ -2,6 +2,7 @@ package cluster
 
 import (
     "context"
+    "fmt"
     "time"
 
     "github.com/onsi/ginkgo/v2"
@@ -13,8 +14,8 @@ import (
     "github.com/openshift-hyperfleet/hyperfleet-e2e/pkg/labels"
 )
 
-var _ = ginkgo.Describe("Cluster Resource Type Lifecycle",
-    ginkgo.Label(labels.Tier0, "baseline"),
+var _ = ginkgo.Describe("[Suite: cluster][baseline] Cluster Resource Type Lifecycle",
+    ginkgo.Label(labels.Tier0),
     func() {
         var h *helper.Helper
         var clusterID string
@@ -158,6 +159,20 @@ var _ = ginkgo.Describe("Cluster Resource Type Lifecycle",
                                 "cluster condition %s should have observed_generation=1 for new creation request", condition.Type)
                         }
                     }
+
+                    // Validate adapter-specific conditions in cluster status
+                    // Each required adapter should report its own condition type (e.g., ClNamespaceSuccessful, ClJobSuccessful)
+                    for _, adapterName := range h.Cfg.Adapters.Cluster {
+                        expectedCondType := h.AdapterNameToClusterConditionType(adapterName)
+                        hasAdapterCondition := h.HasResourceCondition(
+                            finalCluster.Status.Conditions,
+                            expectedCondType,
+                            openapi.ResourceConditionStatusTrue,
+                        )
+                        Expect(hasAdapterCondition).To(BeTrue(),
+                            "cluster should have %s=True condition for adapter %s",
+                            expectedCondType, adapterName)
+                    }
                 })
         })
 
@@ -211,8 +226,7 @@ var _ = ginkgo.Describe("Cluster Resource Type Lifecycle",
                     for _, adapterName := range h.Cfg.Adapters.Cluster {
                         verifier, exists := adapterResourceVerifiers[adapterName]
                         if !exists {
-                            ginkgo.GinkgoWriter.Printf("Warning: no K8s resource verifier defined for adapter %s, skipping\n", adapterName)
-                            continue
+                            ginkgo.Fail(fmt.Sprintf("No K8s resource verifier defined for adapter %s - test configuration error", adapterName))
                         }
 
                         ginkgo.By("Verifying Kubernetes resource for adapter: " + adapterName)
@@ -226,138 +240,139 @@ var _ = ginkgo.Describe("Cluster Resource Type Lifecycle",
         })
 
         ginkgo.Describe("Adapter Dependency Relationships Workflow Validation", func() {
-                // This test validates adapter dependency relationships:
-                // 1. During cl-job execution: cl-deployment Applied=False and Available=Unknown (never False)
-                // 2. After cl-job completes: cl-deployment can proceed (no validation on Available during execution)
-                // 3. Eventually: cl-deployment Available becomes True (success)
-                ginkgo.It("should validate cl-deployment dependency on cl-job with comprehensive condition checks",
-                    func(ctx context.Context) {
-                        pollingInterval := "1s"
+            // This test validates adapter dependency relationships:
+            // 1. During cl-job execution: cl-deployment Applied=False and Available=Unknown (never False)
+            // 2. After cl-job completes: cl-deployment can proceed (no validation on Available during execution)
+            // 3. Eventually: cl-deployment Available becomes True (success)
+            ginkgo.It("should validate cl-deployment dependency on cl-job with comprehensive condition checks",
+                func(ctx context.Context) {
+                    pollingInterval := "1s"
 
-                        ginkgo.By("Verify cl-deployment initial state and dependency waiting behavior")
-                        // Capture cl-deployment's initial waiting state
-                        // Poll until cl-deployment appears in the statuses
-                        var foundInitialState bool
-                        Eventually(func(g Gomega) {
-                            statuses, err := h.Client.GetClusterStatuses(ctx, clusterID)
-                            g.Expect(err).NotTo(HaveOccurred(), "failed to get cluster statuses")
+                    ginkgo.By("Verify cl-deployment initial state and dependency waiting behavior")
+                    // Capture cl-deployment's initial waiting state
+                    // Poll until cl-deployment appears in the statuses
+                    var foundInitialState bool
+                    Eventually(func(g Gomega) {
+                        foundInitialState = false
+                        statuses, err := h.Client.GetClusterStatuses(ctx, clusterID)
+                        g.Expect(err).NotTo(HaveOccurred(), "failed to get cluster statuses")
 
-                            // Find cl-deployment adapter
-                            for _, adapter := range statuses.Items {
-                                if adapter.Adapter == "cl-deployment" {
-                                    foundInitialState = true
+                        // Find cl-deployment adapter
+                        for _, adapter := range statuses.Items {
+                            if adapter.Adapter == "cl-deployment" {
+                                foundInitialState = true
 
-                                    // Verify initial waiting state
-                                    hasAppliedFalse := h.HasAdapterCondition(
-                                        adapter.Conditions,
-                                        client.ConditionTypeApplied,
-                                        openapi.AdapterConditionStatusFalse,
-                                    )
-                                    g.Expect(hasAppliedFalse).To(BeTrue(),
-                                        "cl-deployment Applied condition should be False initially (waiting for cl-job)")
+                                // Verify initial waiting state
+                                hasAppliedFalse := h.HasAdapterCondition(
+                                    adapter.Conditions,
+                                    client.ConditionTypeApplied,
+                                    openapi.AdapterConditionStatusFalse,
+                                )
+                                g.Expect(hasAppliedFalse).To(BeTrue(),
+                                    "cl-deployment Applied condition should be False initially (waiting for cl-job)")
 
-                                    hasAvailableUnknown := h.HasAdapterCondition(
-                                        adapter.Conditions,
-                                        client.ConditionTypeAvailable,
-                                        openapi.AdapterConditionStatusUnknown,
-                                    )
-                                    g.Expect(hasAvailableUnknown).To(BeTrue(),
-                                        "cl-deployment Available condition should be Unknown initially (waiting for cl-job)")
+                                hasAvailableUnknown := h.HasAdapterCondition(
+                                    adapter.Conditions,
+                                    client.ConditionTypeAvailable,
+                                    openapi.AdapterConditionStatusUnknown,
+                                )
+                                g.Expect(hasAvailableUnknown).To(BeTrue(),
+                                    "cl-deployment Available condition should be Unknown initially (waiting for cl-job)")
 
-                                    hasHealthTrue := h.HasAdapterCondition(
-                                        adapter.Conditions,
-                                        client.ConditionTypeHealth,
-                                        openapi.AdapterConditionStatusTrue,
-                                    )
-                                    g.Expect(hasHealthTrue).To(BeTrue(),
-                                        "cl-deployment Health condition should be True (adapter is healthy, just waiting)")
+                                hasHealthTrue := h.HasAdapterCondition(
+                                    adapter.Conditions,
+                                    client.ConditionTypeHealth,
+                                    openapi.AdapterConditionStatusTrue,
+                                )
+                                g.Expect(hasHealthTrue).To(BeTrue(),
+                                    "cl-deployment Health condition should be True (adapter is healthy, just waiting)")
 
-                                    return
-                                }
-                            }
-                            g.Expect(foundInitialState).To(BeTrue(), "cl-deployment adapter should appear in statuses")
-                        }, h.Cfg.Timeouts.Adapter.Processing, pollingInterval).Should(Succeed())
-
-                        ginkgo.By("Verify dependency: cl-deployment Applied=False and Available=Unknown during cl-job execution")
-                        // Poll continuously until cl-deployment Available becomes True:
-                        // - Before cl-job Available=True: verify cl-deployment Applied=False and Available!=False
-                        // - After cl-job Available=True: only wait for cl-deployment Available=True
-                        // - Exit when cl-deployment Available=True
-                        timeout := time.After(h.Cfg.Timeouts.Adapter.Processing)
-                        ticker := time.NewTicker(1 * time.Second)
-                        defer ticker.Stop()
-
-                        var jobAvailableReachedTrue bool
-
-                    pollLoop:
-                        for {
-                            select {
-                            case <-timeout:
-                                ginkgo.Fail("Timed out waiting for cl-deployment Available condition to become True")
-                            case <-ticker.C:
-                                statuses, err := h.Client.GetClusterStatuses(ctx, clusterID)
-                                Expect(err).NotTo(HaveOccurred(), "failed to get cluster statuses")
-
-                                var jobAvailableTrue bool
-                                var deploymentAppliedTrue bool
-                                var deploymentAvailableTrue bool
-                                var deploymentAvailableFalse bool
-
-                                for _, adapter := range statuses.Items {
-                                    if adapter.Adapter == "cl-job" {
-                                        jobAvailableTrue = h.HasAdapterCondition(
-                                            adapter.Conditions,
-                                            client.ConditionTypeAvailable,
-                                            openapi.AdapterConditionStatusTrue,
-                                        )
-                                    }
-                                    if adapter.Adapter == "cl-deployment" {
-                                        deploymentAppliedTrue = h.HasAdapterCondition(
-                                            adapter.Conditions,
-                                            client.ConditionTypeApplied,
-                                            openapi.AdapterConditionStatusTrue,
-                                        )
-                                        deploymentAvailableTrue = h.HasAdapterCondition(
-                                            adapter.Conditions,
-                                            client.ConditionTypeAvailable,
-                                            openapi.AdapterConditionStatusTrue,
-                                        )
-                                        deploymentAvailableFalse = h.HasAdapterCondition(
-                                            adapter.Conditions,
-                                            client.ConditionTypeAvailable,
-                                            openapi.AdapterConditionStatusFalse,
-                                        )
-                                    }
-                                }
-
-                                // Track when cl-job Available first becomes True
-                                if jobAvailableTrue && !jobAvailableReachedTrue {
-                                    jobAvailableReachedTrue = true
-                                    ginkgo.GinkgoWriter.Printf("cl-job Available=True reached, cl-deployment can now proceed\n")
-                                }
-
-                                // Validate dependency enforcement: only check while cl-job is still executing
-                                if !jobAvailableReachedTrue {
-                                    // cl-deployment should not start applying resources until cl-job completes
-                                    Expect(deploymentAppliedTrue).To(BeFalse(),
-                                        "cl-deployment Applied should remain False while cl-job Available is not True yet")
-
-                                    // cl-deployment Available should stay Unknown (not False) while waiting for cl-job
-                                    Expect(deploymentAvailableFalse).To(BeFalse(),
-                                        "cl-deployment Available must be Unknown (not False) during cl-job execution")
-                                }
-
-                                // Exit when cl-deployment Available becomes True (workflow complete)
-                                if deploymentAvailableTrue {
-                                    ginkgo.GinkgoWriter.Printf("cl-deployment Available=True reached, dependency validation successful\n")
-                                    break pollLoop
-                                }
+                                return
                             }
                         }
+                        g.Expect(foundInitialState).To(BeTrue(), "cl-deployment adapter should appear in statuses")
+                    }, h.Cfg.Timeouts.Adapter.Processing, pollingInterval).Should(Succeed())
 
-                        ginkgo.GinkgoWriter.Printf("Successfully validated cl-deployment dependency on cl-job with correct condition transitions\n")
-                    })
-            })
+                    ginkgo.By("Verify dependency: cl-deployment Applied=False and Available=Unknown during cl-job execution")
+                    // Poll continuously until cl-deployment Available becomes True:
+                    // - Before cl-job Available=True: verify cl-deployment Applied=False and Available!=False
+                    // - After cl-job Available=True: only wait for cl-deployment Available=True
+                    // - Exit when cl-deployment Available=True
+                    timeout := time.After(h.Cfg.Timeouts.Adapter.Processing)
+                    ticker := time.NewTicker(1 * time.Second)
+                    defer ticker.Stop()
+
+                    var jobAvailableReachedTrue bool
+
+                pollLoop:
+                    for {
+                        select {
+                        case <-timeout:
+                            ginkgo.Fail("Timed out waiting for cl-deployment Available condition to become True")
+                        case <-ticker.C:
+                            statuses, err := h.Client.GetClusterStatuses(ctx, clusterID)
+                            Expect(err).NotTo(HaveOccurred(), "failed to get cluster statuses")
+
+                            var jobAvailableTrue bool
+                            var deploymentAppliedTrue bool
+                            var deploymentAvailableTrue bool
+                            var deploymentAvailableFalse bool
+
+                            for _, adapter := range statuses.Items {
+                                if adapter.Adapter == "cl-job" {
+                                    jobAvailableTrue = h.HasAdapterCondition(
+                                        adapter.Conditions,
+                                        client.ConditionTypeAvailable,
+                                        openapi.AdapterConditionStatusTrue,
+                                    )
+                                }
+                                if adapter.Adapter == "cl-deployment" {
+                                    deploymentAppliedTrue = h.HasAdapterCondition(
+                                        adapter.Conditions,
+                                        client.ConditionTypeApplied,
+                                        openapi.AdapterConditionStatusTrue,
+                                    )
+                                    deploymentAvailableTrue = h.HasAdapterCondition(
+                                        adapter.Conditions,
+                                        client.ConditionTypeAvailable,
+                                        openapi.AdapterConditionStatusTrue,
+                                    )
+                                    deploymentAvailableFalse = h.HasAdapterCondition(
+                                        adapter.Conditions,
+                                        client.ConditionTypeAvailable,
+                                        openapi.AdapterConditionStatusFalse,
+                                    )
+                                }
+                            }
+
+                            // Track when cl-job Available first becomes True
+                            if jobAvailableTrue && !jobAvailableReachedTrue {
+                                jobAvailableReachedTrue = true
+                                ginkgo.GinkgoWriter.Printf("cl-job Available=True reached, cl-deployment can now proceed\n")
+                            }
+
+                            // Validate dependency enforcement: only check while cl-job is still executing
+                            if !jobAvailableReachedTrue {
+                                // cl-deployment should not start applying resources until cl-job completes
+                                Expect(deploymentAppliedTrue).To(BeFalse(),
+                                    "cl-deployment Applied should remain False while cl-job Available is not True yet")
+
+                                // cl-deployment Available should stay Unknown (not False) while waiting for cl-job
+                                Expect(deploymentAvailableFalse).To(BeFalse(),
+                                    "cl-deployment Available must be Unknown (not False) during cl-job execution")
+                            }
+
+                            // Exit when cl-deployment Available becomes True (workflow complete)
+                            if deploymentAvailableTrue {
+                                ginkgo.GinkgoWriter.Printf("cl-deployment Available=True reached, dependency validation successful\n")
+                                break pollLoop
+                            }
+                        }
+                    }
+
+                    ginkgo.GinkgoWriter.Printf("Successfully validated cl-deployment dependency on cl-job with correct condition transitions\n")
+                })
+        })
 
         ginkgo.AfterEach(func(ctx context.Context) {
             // Skip cleanup if helper not initialized or no cluster created

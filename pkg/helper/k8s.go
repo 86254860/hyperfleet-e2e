@@ -25,26 +25,6 @@ func buildLabelSelector(labels map[string]string) string {
     return strings.Join(parts, ",")
 }
 
-// K8sResource represents a Kubernetes resource to verify
-type K8sResource struct {
-    Kind               string            // Resource kind (Namespace, Job, Deployment, etc.)
-    Name               string            // Resource name (optional if using label selector)
-    Namespace          string            // Namespace (empty for cluster-scoped resources)
-    Labels             map[string]string // Expected labels to verify
-    Annotations        map[string]string // Expected annotations to verify
-    LabelSelector      string            // Label selector to find resource (e.g., "app=test,tier=frontend")
-    ExpectedGeneration string            // Expected generation value in annotations
-}
-
-// K8sResourceStatus represents the status of a verified Kubernetes resource
-type K8sResourceStatus struct {
-    Exists      bool
-    Labels      map[string]interface{}
-    Annotations map[string]interface{}
-    Status      map[string]interface{}
-    RawJSON     map[string]interface{}
-}
-
 // VerifyNamespaceActive verifies a namespace exists and is in Active phase
 func (h *Helper) VerifyNamespaceActive(ctx context.Context, name string, expectedLabels, expectedAnnotations map[string]string) error {
     logger.Info("verifying namespace status", "namespace", name)
@@ -130,6 +110,9 @@ func (h *Helper) VerifyJobComplete(ctx context.Context, namespace string, expect
     items, ok := jobList["items"].([]interface{})
     if !ok || len(items) == 0 {
         return fmt.Errorf("no job found in namespace %s with selector %s", namespace, labelSelector)
+    }
+    if len(items) > 1 {
+        return fmt.Errorf("multiple jobs (%d) found in namespace %s with selector %s - expected exactly one", len(items), namespace, labelSelector)
     }
 
     // Get the first job (should be only one)
@@ -217,6 +200,9 @@ func (h *Helper) VerifyDeploymentAvailable(ctx context.Context, namespace string
     items, ok := deployList["items"].([]interface{})
     if !ok || len(items) == 0 {
         return fmt.Errorf("no deployment found in namespace %s with selector %s", namespace, labelSelector)
+    }
+    if len(items) > 1 {
+        return fmt.Errorf("multiple deployments (%d) found in namespace %s with selector %s - expected exactly one", len(items), namespace, labelSelector)
     }
 
     // Get the first deployment (should be only one)
