@@ -7,7 +7,7 @@
 3. [Clusters Resource Type - Adapter Dependency Relationships Workflow Validation for Preinstalled Clusters Related Dependent Adapters](#test-title-clusters-resource-type---adapter-dependency-relationships-workflow-validation-for-preinstalled-clusters-related-dependent-adapters)
 ---
 
-## Test Title: Clusters Resource Type - Workflow Validation
+## Test Title: Clusters Resource Type - Basic Workflow Validation
 
 ### Description
 
@@ -129,7 +129,7 @@ curl -X DELETE ${API_URL}/api/hyperfleet/v1/clusters/{cluster_id}
 
 ### Description
 
-This test verifies that the Kubernetes resources (namespace and job) can be successfully created, aligned with the preinstalled adapters specified when submitting a clusters resource request.  
+This test verifies that Kubernetes resources are successfully created with correct templated values for all required cluster adapters. The test dynamically reads the list of required adapters from config, waits for each adapter to complete execution, then validates that corresponding Kubernetes resources (Namespace, Job, Deployment) exist with properly rendered metadata (labels, annotations) matching the cluster request payload. This ensures adapter Kubernetes resource management and templating work correctly across all configured adapters.
 
 ---
 
@@ -137,11 +137,11 @@ This test verifies that the Kubernetes resources (namespace and job) can be succ
 |-----------|---------------|
 | **Pos/Neg** | Positive      |
 | **Priority** | Tier0         |
-| **Status** | Draft         |
-| **Automation** | Not Automated |
+| **Status** | Automated     |
+| **Automation** | Automated     |
 | **Version** | MVP           |
 | **Created** | 2026-01-29    |
-| **Updated** | 2026-02-04    |
+| **Updated** | 2026-02-11    |
 
 
 ---
@@ -157,6 +157,7 @@ This test verifies that the Kubernetes resources (namespace and job) can be succ
 ### Test Steps
 
 #### Step 1: Submit an API request to create a Cluster resource
+
 **Action:**
 - Submit a POST request to create a Cluster resource:
 ```bash
@@ -166,16 +167,62 @@ curl -X POST ${API_URL}/api/hyperfleet/v1/clusters \
 ```
 
 **Expected Result:**
-- API returns successful response
+- Response includes the created cluster ID and initial metadata
+- Initial cluster conditions have `status: False` for both condition `{"type": "Ready"}` and `{"type": "Available"}`
 
-#### Step 2: Verify Kubernetes Resources Management
+#### Step 2: Wait for all required adapters to complete
+
 **Action:**
-- Verify resource created
+- Poll adapter statuses until all required adapters complete execution:
+```bash
+curl -X GET ${API_URL}/api/hyperfleet/v1/clusters/{cluster_id}/statuses
+```
 
 **Expected Result:**
-- Resource is created successfully with templated values rendered
+- All required adapters from config (cl-namespace, cl-job, cl-deployment) are present
+- Each adapter has all three conditions (`Applied`, `Available`, `Health`) with `status: True`
 
-#### Step 3: Cleanup resources
+**Note:** Required adapters are configurable via `configs/config.yaml` under `adapters.cluster`
+
+#### Step 3: Verify Kubernetes resources for each adapter with correct metadata
+
+**Action:**
+- For each required adapter, retrieve and validate corresponding Kubernetes resources:
+
+**For cl-namespace adapter:**
+```bash
+kubectl get namespace {cluster_id} -o yaml
+```
+
+**Expected Result:**
+- Namespace exists with name matching the cluster ID
+- Namespace status phase is `Active`
+- Required annotations:
+  - `hyperfleet.io/generation`: Equals "1" for new creation request
+
+**For cl-job adapter:**
+```bash
+kubectl get job -n {cluster_id} -l hyperfleet.io/cluster-id={cluster_id},hyperfleet.io/resource-type=job -o yaml
+```
+
+**Expected Result:**
+- Job exists in the cluster namespace, identified by the label selector
+- Job has completed successfully (status.succeeded > 0 or status.conditions contains type=Complete with status=True)
+- Required annotations:
+  - `hyperfleet.io/generation`: Equals "1" for new creation request
+
+**For cl-deployment adapter:**
+```bash
+kubectl get deployment -n {cluster_id} -l hyperfleet.io/cluster-id={cluster_id},hyperfleet.io/resource-type=deployment -o yaml
+```
+
+**Expected Result:**
+- Deployment exists in the cluster namespace, identified by the label selector
+- Deployment is available (status.availableReplicas > 0 and status.conditions contains type=Available with status=True)
+- Required annotations:
+  - `hyperfleet.io/generation`: Equals "1" for new creation request
+
+#### Step 4: Cleanup resources
 
 **Action:**
 - Delete the namespace created for this cluster:
@@ -193,11 +240,11 @@ curl -X DELETE ${API_URL}/api/hyperfleet/v1/clusters/{cluster_id}
 
 ---
 
-## Test Title: Clusters Resource Type - Adapter Dependency Relationships Workflow Validation for Preinstalled Clusters Related Dependent Adapters
+## Test Title: Clusters Resource Type - Adapter Dependency Relationships Workflow Validation
 
 ### Description
 
-This test validates that CLM correctly executes workflows with preinstalled dependent adapters when submitting a clusters resource request. The test ensures adapter dependency relationships are honored, adapters execute in the correct order based on preconditions, and dependent adapters wait for prerequisite adapters to complete successfully. It also validates intermediate workflow states using job-based delay simulation.
+This test validates that CLM correctly handles adapter dependency relationships when processing a clusters resource request. Specifically, it verifies the dependency relationship where the cl-deployment adapter depends on the cl-job adapter completion. The test continuously polls and validates throughout the workflow period to ensure: (1) cl-deployment's Applied condition remains False until cl-job's Available condition reaches True, enforcing the dependency precondition; (2) during cl-job execution, cl-deployment's Available condition stays Unknown (never False), confirming the adapter waits correctly without attempting execution; (3) successful completion with cl-deployment's Available eventually transitioning to True. This validation demonstrates that the workflow engine properly enforces adapter dependencies and ensures dependent adapters wait for prerequisites before executing.
 
 ---
 
@@ -205,11 +252,11 @@ This test validates that CLM correctly executes workflows with preinstalled depe
 |-----------|---------------|
 | **Pos/Neg** | Positive      |
 | **Priority** | Tier0         |
-| **Status** | Draft         |
-| **Automation** | Not Automated |
+| **Status** | Automated     |
+| **Automation** | Automated     |
 | **Version** | MVP           |
 | **Created** | 2026-01-29    |
-| **Updated** | 2026-02-04    |
+| **Updated** | 2026-02-11    |
 
 
 ---
@@ -236,53 +283,47 @@ curl -X POST ${API_URL}/api/hyperfleet/v1/clusters \
 **Expected Result:**
 - API returns successful response
 
-#### Step 2: Verify execution order and state
+#### Step 2: Verify cl-deployment initial state and dependency waiting behavior
+
 **Action:**
-- Send GET request to retrieve the specific cluster:
+- Poll adapter statuses to capture cl-deployment's initial waiting state:
 ```bash
 curl -X GET ${API_URL}/api/hyperfleet/v1/clusters/{cluster_id}/statuses
 ```
 
 **Expected Result:**
-At the intermediate workflow state (when adapter 2 is executing):
-- The first adapter (namespace-adapter) has completed successfully
-- The second adapter (job-adapter) is in progress
-- The third adapter (job-dependency-adapter) waits for preconditions to be met
-- Adapter status information shows:
-    - Adapter 1 "message": "namespace is active and ready" and 'status' is 'true'
-    - Adapter 2 "message": "job is progress" and 'status' is 'unknown'
-    - Adapter 3 "message": "job-dependency is pending" and 'status' is 'false'
+At the initial state (when cl-deployment first appears in statuses):
+- Response returns HTTP 200 (OK) status code
+- The `cl-deployment` adapter is present with initial waiting state:
+  - `Applied` condition has `status: "False"` (deployment hasn't been applied yet, waiting for cl-job dependency)
+  - `Available` condition has `status: "Unknown"` (deployment hasn't been applied yet)
+  - `Health` condition has `status: "True"` (adapter itself is healthy, just waiting)
 
-#### Step 3: Verify sequential execution and resource creation
+#### Step 3: Verify dependency relationship and condition transitions throughout entire workflow
+
 **Action:**
-- Verify Kubernetes resources: namespace is created
-- Send GET request to retrieve the specific cluster:
+- Continuously poll adapter statuses from the initial state until cl-deployment completes:
 ```bash
 curl -X GET ${API_URL}/api/hyperfleet/v1/clusters/{cluster_id}/statuses
 ```
-- Monitor adapter execution progress
 
 **Expected Result:**
-- Adapter 1 creates Namespace
-- After adapter 2 executes completely, adapter 3 is in progress.
-- Adapters execute in correct order based on preconditions:
-    1. Adapter 1 (namespace-creator) completes first
-    2. Adapter 2 (workload) executes after adapter 1 completes
-    3. Adapter 3 (another workload) executes after adapter 2 completes
-- All three adapters report Ready status to API
+Throughout the entire period (from initial state until cl-deployment completes), validate the following on each poll:
 
+**Validation 1 - Dependency enforcement (during cl-job execution):**
+- While `cl-job` adapter's `Available` condition has NOT reached `status: "True"`:
+  - The `cl-deployment` adapter's `Applied` condition must remain `status: "False"`
+  - The `cl-deployment` adapter's `Available` condition must remain `status: "Unknown"` (never `status: "False"`)
+  - This validates that cl-deployment waits for cl-job to complete without attempting to apply resources
 
-#### Step 4: Verify final cluster state
-**Action:**
-- Send GET request to retrieve cluster statuses:
-```bash
-curl -X GET ${API_URL}/api/hyperfleet/v1/clusters/{cluster_id}
-```
+**Validation 2 - Success condition:**
+- Once `cl-job` adapter's `Available` reaches `status: "True"`, cl-deployment can proceed with execution
+- Once `cl-deployment` completes execution, its `Available` condition eventually becomes `status: "True"`
+- This confirms the complete dependency workflow succeeded
 
-**Expected Result:**
-- Final cluster conditions have `status: True` for both condition `{"type": "Ready"}` and `{"type": "Available"}`
+**Note:** After cl-job completes, cl-deployment's `Available` condition may temporarily be `False` (e.g., `MinimumReplicasUnavailable` during deployment startup) before becoming `True`, which is expected behavior and not validated.
 
-#### Step 5: Cleanup resources
+#### Step 4: Cleanup resources
 
 **Action:**
 - Delete the namespace created for this cluster:

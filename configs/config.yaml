@@ -47,11 +47,11 @@ timeouts:
 
   adapter:
     # Maximum time to wait for adapter processing
-    # Recommended: 1m
+    # Recommended: 2m
     #
     # Format: Duration string
     # Can be overridden by: HYPERFLEET_TIMEOUTS_ADAPTER_PROCESSING
-    processing: 1m
+    processing: 2m
 
 # ============================================================================
 # Polling Configuration
@@ -98,6 +98,8 @@ adapters:
   # Can be overridden by: HYPERFLEET_ADAPTERS_CLUSTER (comma-separated)
   cluster:
     - "cl-namespace"
+    - "cl-job"
+    - "cl-deployment"
 
   # Required adapters for nodepool resources
   # List of adapter names that must be present and have correct conditions
