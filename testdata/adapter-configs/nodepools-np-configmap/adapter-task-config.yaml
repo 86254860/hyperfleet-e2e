@@ -11,7 +11,7 @@ spec:
   # Parameters with all required variables
   params:
     - name: "clusterId"
-      source: "event.owned_reference.id"
+      source: "event.owner_references.id"
       type: "string"
       required: true
     - name: "nodepoolId"

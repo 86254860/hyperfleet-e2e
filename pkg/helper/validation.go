@@ -12,7 +12,8 @@ var (
     // k8sNameRegex validates Kubernetes resource names (DNS-1123 subdomain format)
     k8sNameRegex = regexp.MustCompile(`^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$`)
     // labelSelectorRegex validates Kubernetes label selector format (key=value,key=value)
-    labelSelectorRegex = regexp.MustCompile(`^[a-zA-Z0-9]([-a-zA-Z0-9_.]*[a-zA-Z0-9])?=[a-zA-Z0-9]([-a-zA-Z0-9_.]*[a-zA-Z0-9])?(,[a-zA-Z0-9]([-a-zA-Z0-9_.]*[a-zA-Z0-9])?=[a-zA-Z0-9]([-a-zA-Z0-9_.]*[a-zA-Z0-9])?)*$`)
+    // Supports optional prefix (e.g., hyperfleet.io/cluster-id=value)
+    labelSelectorRegex = regexp.MustCompile(`^([a-zA-Z0-9]([-a-zA-Z0-9_.]*[a-zA-Z0-9])?/)?[a-zA-Z0-9]([-a-zA-Z0-9_.]*[a-zA-Z0-9])?=[a-zA-Z0-9]([-a-zA-Z0-9_.]*[a-zA-Z0-9])?(,([a-zA-Z0-9]([-a-zA-Z0-9_.]*[a-zA-Z0-9])?/)?[a-zA-Z0-9]([-a-zA-Z0-9_.]*[a-zA-Z0-9])?=[a-zA-Z0-9]([-a-zA-Z0-9_.]*[a-zA-Z0-9])?)*$`)
 )
 
 // ValidateK8sName validates a Kubernetes resource name (namespace, resource name, etc.)
