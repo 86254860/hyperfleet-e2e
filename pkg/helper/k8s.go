@@ -35,9 +35,14 @@ func (h *Helper) VerifyNamespaceActive(ctx context.Context, name string, expecte
 
     // Get namespace as JSON
     cmd := exec.CommandContext(cmdCtx, "kubectl", "get", "namespace", name, "-o", "json")
-    output, err := cmd.CombinedOutput()
+    output, err := cmd.Output()
     if err != nil {
-        return fmt.Errorf("failed to get namespace %s: %w (output: %s)", name, err, string(output))
+        // Capture stderr for error context
+        stderr := ""
+        if exitErr, ok := err.(*exec.ExitError); ok {
+            stderr = string(exitErr.Stderr)
+        }
+        return fmt.Errorf("failed to get namespace %s: %w (stderr: %s)", name, err, stderr)
     }
 
     // Parse JSON
@@ -105,10 +110,15 @@ func (h *Helper) VerifyJobComplete(ctx context.Context, namespace string, expect
         "-n", namespace,
         "-l", labelSelector,
         "-o", "json")
-    output, err := cmd.CombinedOutput()
+    output, err := cmd.Output()
     if err != nil {
-        return fmt.Errorf("failed to get job in namespace %s with selector %s: %w (output: %s)",
-            namespace, labelSelector, err, string(output))
+        // Capture stderr for error context
+        stderr := ""
+        if exitErr, ok := err.(*exec.ExitError); ok {
+            stderr = string(exitErr.Stderr)
+        }
+        return fmt.Errorf("failed to get job in namespace %s with selector %s: %w (stderr: %s)",
+            namespace, labelSelector, err, stderr)
     }
 
     // Parse JSON list
@@ -205,10 +215,15 @@ func (h *Helper) VerifyDeploymentAvailable(ctx context.Context, namespace string
         "-n", namespace,
         "-l", labelSelector,
         "-o", "json")
-    output, err := cmd.CombinedOutput()
+    output, err := cmd.Output()
     if err != nil {
-        return fmt.Errorf("failed to get deployment in namespace %s with selector %s: %w (output: %s)",
-            namespace, labelSelector, err, string(output))
+        // Capture stderr for error context
+        stderr := ""
+        if exitErr, ok := err.(*exec.ExitError); ok {
+            stderr = string(exitErr.Stderr)
+        }
+        return fmt.Errorf("failed to get deployment in namespace %s with selector %s: %w (stderr: %s)",
+            namespace, labelSelector, err, stderr)
     }
 
     // Parse JSON list
