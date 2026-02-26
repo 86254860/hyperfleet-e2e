@@ -103,7 +103,7 @@ kubectl get pods -n maestro --no-headers
 #### Step 2: Create a cluster via HyperFleet API
 **Action:**
 ```bash
-curl -s -X POST http://localhost:8000/api/hyperfleet/v1/clusters \
+curl -s -X POST ${API_URL}/api/hyperfleet/v1/clusters \
   -H "Content-Type: application/json" \
   -d '{
     "kind": "Cluster",
@@ -178,7 +178,7 @@ kubectl get configmap -n <CLUSTER_ID>-adapter2-namespace
 #### Step 7: Verify adapter status report to HyperFleet API
 **Action:**
 ```bash
-curl -s http://localhost:8000/api/hyperfleet/v1/clusters/<CLUSTER_ID>/statuses \
+curl -s ${API_URL}/api/hyperfleet/v1/clusters/<CLUSTER_ID>/statuses \
   | jq '.items[] | select(.adapter == "adapter2")'
 ```
 
@@ -234,7 +234,7 @@ This test validates the generation-based idempotency mechanism for ManifestWork 
 #### Step 1: Create a cluster (triggers initial ManifestWork creation)
 **Action:**
 ```bash
-curl -s -X POST http://localhost:8000/api/hyperfleet/v1/clusters \
+curl -s -X POST ${API_URL}/api/hyperfleet/v1/clusters \
   -H "Content-Type: application/json" \
   -d '{
     "kind": "Cluster",
@@ -342,7 +342,7 @@ kubectl get pods -n hyperfleet -l app.kubernetes.io/name=hyperfleet-adapter --no
 #### Step 2: Create a cluster (both adapters will process the event)
 **Action:**
 ```bash
-curl -s -X POST http://localhost:8000/api/hyperfleet/v1/clusters \
+curl -s -X POST ${API_URL}/api/hyperfleet/v1/clusters \
   -H "Content-Type: application/json" \
   -d '{
     "kind": "Cluster",
@@ -382,7 +382,7 @@ kubectl get configmap -n <CLUSTER_ID>-adapter2-namespace
 #### Step 5: Compare status reports from both adapters
 **Action:**
 ```bash
-curl -s http://localhost:8000/api/hyperfleet/v1/clusters/<CLUSTER_ID>/statuses \
+curl -s ${API_URL}/api/hyperfleet/v1/clusters/<CLUSTER_ID>/statuses \
   | jq '.items[] | {adapter: .adapter, conditions: [.conditions[] | {type, status, reason}]}'
 ```
 
@@ -435,7 +435,7 @@ This test validates the nestedDiscovery mechanism that allows the adapter to dis
 #### Step 1: Create a cluster and wait for adapter processing
 **Action:**
 ```bash
-curl -s -X POST http://localhost:8000/api/hyperfleet/v1/clusters \
+curl -s -X POST ${API_URL}/api/hyperfleet/v1/clusters \
   -H "Content-Type: application/json" \
   -d '{
     "kind": "Cluster",
@@ -474,7 +474,7 @@ kubectl logs -n hyperfleet -l app.kubernetes.io/instance=hyperfleet-adapter2 --t
 #### Step 4: Verify impact on status report
 **Action:**
 ```bash
-curl -s http://localhost:8000/api/hyperfleet/v1/clusters/<CLUSTER_ID>/statuses \
+curl -s ${API_URL}/api/hyperfleet/v1/clusters/<CLUSTER_ID>/statuses \
   | jq '.items[] | select(.adapter == "adapter2") | .data'
 ```
 
@@ -572,7 +572,7 @@ kubectl rollout status deployment/hyperfleet-adapter2 -n hyperfleet --timeout=60
 #### Step 3: Create a cluster and verify routing to cluster2
 **Action:**
 ```bash
-curl -s -X POST http://localhost:8000/api/hyperfleet/v1/clusters \
+curl -s -X POST ${API_URL}/api/hyperfleet/v1/clusters \
   -H "Content-Type: application/json" \
   -d '{
     "kind": "Cluster",
@@ -672,7 +672,7 @@ kubectl scale deployment maestro -n maestro --replicas=0
 #### Step 3: Create a cluster while Maestro is down
 **Action:**
 ```bash
-curl -s -X POST http://localhost:8000/api/hyperfleet/v1/clusters \
+curl -s -X POST ${API_URL}/api/hyperfleet/v1/clusters \
   -H "Content-Type: application/json" \
   -d '{
     "kind": "Cluster",
@@ -703,7 +703,7 @@ kubectl logs -n hyperfleet -l app.kubernetes.io/instance=hyperfleet-adapter2 --t
 #### Step 5: Verify error status reported to HyperFleet API
 **Action:**
 ```bash
-curl -s http://localhost:8000/api/hyperfleet/v1/clusters/<CLUSTER_ID>/statuses \
+curl -s ${API_URL}/api/hyperfleet/v1/clusters/<CLUSTER_ID>/statuses \
   | jq '.items[] | select(.adapter == "adapter2") | .conditions'
 ```
 
@@ -748,7 +748,7 @@ kubectl logs -n hyperfleet -l app.kubernetes.io/instance=hyperfleet-adapter2 --t
 kubectl get ns | grep <CLUSTER_ID>-adapter2
 
 # Verify status updated
-curl -s http://localhost:8000/api/hyperfleet/v1/clusters/<CLUSTER_ID>/statuses \
+curl -s ${API_URL}/api/hyperfleet/v1/clusters/<CLUSTER_ID>/statuses \
   | jq '.items[] | select(.adapter == "adapter2") | .conditions[] | select(.type == "Health")'
 ```
 
@@ -825,7 +825,7 @@ kubectl rollout status deployment/hyperfleet-adapter2 -n hyperfleet --timeout=60
 #### Step 2: Create a cluster to trigger adapter processing
 **Action:**
 ```bash
-curl -s -X POST http://localhost:8000/api/hyperfleet/v1/clusters \
+curl -s -X POST ${API_URL}/api/hyperfleet/v1/clusters \
   -H "Content-Type: application/json" \
   -d '{
     "kind": "Cluster",
@@ -864,7 +864,7 @@ kubectl get pods -n hyperfleet -l app.kubernetes.io/instance=hyperfleet-adapter2
 #### Step 5: Verify error status reported to API
 **Action:**
 ```bash
-curl -s http://localhost:8000/api/hyperfleet/v1/clusters/<CLUSTER_ID>/statuses \
+curl -s ${API_URL}/api/hyperfleet/v1/clusters/<CLUSTER_ID>/statuses \
   | jq '.items[] | select(.adapter == "adapter2") | .conditions'
 ```
 
