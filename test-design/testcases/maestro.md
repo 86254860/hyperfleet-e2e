@@ -186,8 +186,7 @@ curl -s ${API_URL}/api/hyperfleet/v1/clusters/<CLUSTER_ID>/statuses \
 - Status entry with `adapter: "adapter2"`
 - Three conditions: Applied, Available, Health
 - `observed_generation: 1`
-
-> **Note:** Applied=False and Available=False despite the ManifestWork being created and resources deployed. This is because NestedDiscovery fails to retrieve sub-resource status feedback from the ManifestWork (see Test 4). Health=True indicates the adapter execution itself succeeded.
+- Applied=True (AppliedManifestWorkComplete), Available=True (ResourcesAvailable), Health=True (Healthy)
 
 #### Step 8: Cleanup
 **Action:**
@@ -390,7 +389,7 @@ curl -s ${API_URL}/api/hyperfleet/v1/clusters/<CLUSTER_ID>/statuses \
 - Two separate status entries (one per adapter), no overwriting
 - Both report the same condition types: Applied, Available, Health
 - adapter1 (K8s) shows Applied=True because it directly creates the ConfigMap
-- adapter2 (Maestro) shows Applied=False because status feedback from ManifestWork is not yet bridged back
+- adapter2 (Maestro) shows Applied=True (AppliedManifestWorkComplete)
 - Each adapter's status is independently maintained
 
 #### Step 6: Cleanup
@@ -467,9 +466,10 @@ kubectl logs -n hyperfleet -l app.kubernetes.io/instance=hyperfleet-adapter2 --t
   | grep -E "CEL evaluation|namespace0|configmap0|nestedDiscovery"
 ```
 
-**Expected Result (ideal):**
+**Expected Result:**
+- No CEL evaluation errors in adapter logs
 - CEL expressions referencing `resources.namespace0` and `resources.configmap0` evaluate successfully
-- Status data (namespace phase, configmap data) is populated from Maestro feedback
+- Status data (namespace phase, configmap data) is populated from Maestro statusFeedback
 
 #### Step 4: Verify impact on status report
 **Action:**
@@ -478,9 +478,12 @@ curl -s ${API_URL}/api/hyperfleet/v1/clusters/<CLUSTER_ID>/statuses \
   | jq '.items[] | select(.adapter == "adapter2") | .data'
 ```
 
-**Expected Result (ideal):**
-- `data.namespace.phase` should show "Active"
-- `data.configmap.clusterId` should show the cluster ID
+**Expected Result:**
+- `data.namespace.phase` = `"Active"`
+- `data.namespace.name` = `"<CLUSTER_ID>-adapter2-namespace"`
+- `data.configmap.clusterId` = `"<CLUSTER_ID>"`
+- `data.configmap.name` = `"<CLUSTER_ID>-adapter2-configmap"`
+- Conditions: Applied=True (AppliedManifestWorkComplete), Available=True (ResourcesAvailable), Health=True (Healthy)
 
 #### Step 5: Verify feedbackRules configuration in Maestro resource bundle
 **Action:**
