@@ -1,0 +1,31 @@
+adapterConfig:
+  create: true
+  files:
+    adapter-config.yaml: clusters-cl-maestro/adapter-config.yaml
+  log:
+    level: debug
+
+adapterTaskConfig:
+  create: true
+  files:
+    task-config.yaml: clusters-cl-maestro/adapter-task-config.yaml
+
+broker:
+  create: true
+  googlepubsub:
+    projectId: CHANGE_ME
+    subscriptionId: CHANGE_ME
+    topic: CHANGE_ME
+    deadLetterTopic: CHANGE_ME
+
+image:
+  registry: CHANGE_ME
+  repository: hyperfleet-adapter
+  pullPolicy: Always
+  tag: latest
+
+rbac:
+   resources:
+     - namespaces
+     - configmaps
+     - configmaps/status
