@@ -15,11 +15,13 @@ var (
 	suiteConfig *config.Config
 )
 
+// SetSuiteConfig sets the global suite configuration for both e2e and helper packages
 func SetSuiteConfig(cfg *config.Config) {
 	suiteConfig = cfg
 	helper.SetSuiteConfig(cfg)
 }
 
+// GetSuiteConfig returns the global suite configuration
 func GetSuiteConfig() *config.Config {
 	return suiteConfig
 }

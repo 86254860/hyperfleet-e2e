@@ -14,18 +14,21 @@ var (
 	configMutex sync.RWMutex
 )
 
+// SetSuiteConfig sets the global suite configuration for the test suite
 func SetSuiteConfig(cfg *config.Config) {
 	configMutex.Lock()
 	defer configMutex.Unlock()
 	suiteConfig = cfg
 }
 
+// GetSuiteConfig returns the global suite configuration
 func GetSuiteConfig() *config.Config {
 	configMutex.RLock()
 	defer configMutex.RUnlock()
 	return suiteConfig
 }
 
+// ClearSuiteConfig clears the global suite configuration
 func ClearSuiteConfig() {
 	configMutex.Lock()
 	defer configMutex.Unlock()

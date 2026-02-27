@@ -113,7 +113,7 @@ func TestVerifyNamespaceActive(t *testing.T) {
 
     for _, tt := range tests {
         t.Run(tt.name, func(t *testing.T) {
-            fakeClient := fake.NewSimpleClientset()
+            fakeClient := fake.NewClientset()
             if tt.namespace != nil {
                 _, err := fakeClient.CoreV1().Namespaces().Create(context.TODO(), tt.namespace, metav1.CreateOptions{})
                 if err != nil {
@@ -223,7 +223,7 @@ func TestVerifyJobComplete(t *testing.T) {
 
     for _, tt := range tests {
         t.Run(tt.name, func(t *testing.T) {
-            fakeClient := fake.NewSimpleClientset()
+            fakeClient := fake.NewClientset()
 
             // Create namespace
             ns := &corev1.Namespace{
@@ -375,7 +375,7 @@ func TestVerifyDeploymentAvailable(t *testing.T) {
 
     for _, tt := range tests {
         t.Run(tt.name, func(t *testing.T) {
-            fakeClient := fake.NewSimpleClientset()
+            fakeClient := fake.NewClientset()
 
             // Create namespace
             ns := &corev1.Namespace{

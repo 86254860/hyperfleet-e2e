@@ -60,9 +60,6 @@ func (h *Helper) VerifyJobComplete(ctx context.Context, namespace string, expect
         LabelSelector: labelSelector,
     })
     if err != nil {
-        if apierrors.IsNotFound(err) {
-            return fmt.Errorf("no job found in namespace %s with selector %s", namespace, labelSelector)
-        }
         return fmt.Errorf("failed to list jobs in namespace %s with selector %s: %w",
             namespace, labelSelector, err)
     }
@@ -119,9 +116,6 @@ func (h *Helper) VerifyDeploymentAvailable(ctx context.Context, namespace string
         LabelSelector: labelSelector,
     })
     if err != nil {
-        if apierrors.IsNotFound(err) {
-            return fmt.Errorf("no deployment found in namespace %s with selector %s", namespace, labelSelector)
-        }
         return fmt.Errorf("failed to list deployments in namespace %s with selector %s: %w",
             namespace, labelSelector, err)
     }
