@@ -24,11 +24,6 @@ spec:
       source: "env.NAMESPACE"
       type: "string"
 
-     #TODO: this should come from config.adapter.metadata.name
-    - name: "adapterName"
-      source: "config.adapterConfig.metadata.name"
-      default: "cl-maestro"
-      description: "Unique identifier for the adapter"
 
   # Preconditions with valid operators and CEL expressions
   preconditions:
@@ -51,7 +46,6 @@ spec:
             status.conditions.filter(c, c.type == "Ready").size() > 0
               ? status.conditions.filter(c, c.type == "Ready")[0].status
               : "False"
-
         - name: "placementClusterName"
           expression: "\"cluster1\""  # TBC coming from placement adapter
           description: "Unique identifier for the target maestro"
@@ -105,13 +99,13 @@ spec:
             app.kubernetes.io/version: "v1.0.0"
             app.kubernetes.io/component: "infrastructure"
             app.kubernetes.io/part-of: "hyperfleet"
-            app.kubernetes.io/managed-by: "hyperfleet-adapter"
+            app.kubernetes.io/managed-by: "cl-maestro"
             app.kubernetes.io/created-by: "{{ .metadata.name }}"
 
           # Annotations for metadata and operational information
           annotations:
             # Tracking and lifecycle
-            hyperfleet.io/created-by: "hyperfleet-adapter-framework"
+            hyperfleet.io/created-by: "cl-maestro-framework"
             hyperfleet.io/managed-by: "{{ .metadata.name }}"
             hyperfleet.io/generation: "{{ .generation }}"
             hyperfleet.io/cluster-name: "{{ .clusterId }}"
@@ -121,14 +115,8 @@ spec:
             maestro.io/applied-time: "{{ .timestamp }}"
             maestro.io/source-adapter: "{{ .metadata.name }}"
 
-            # Operational annotations
-            deployment.hyperfleet.io/strategy: "rolling"
-            deployment.hyperfleet.io/timeout: "300s"
-            monitoring.hyperfleet.io/enabled: "true"
-
             # Documentation
             description: "Complete cluster setup including namespace, configuration, and RBAC"
-            documentation: "https://docs.hyperfleet.io/adapters/aro-hcp"
 
         # ManifestWork specification
         spec:
@@ -145,8 +133,7 @@ spec:
                 labels:
                   app.kubernetes.io/component: adapter-task-config
                   app.kubernetes.io/instance: "{{ .metadata.name }}"
-                  app.kubernetes.io/name: hyperfleet-adapter
-                  app.kubernetes.io/version: 1.0.0
+                  app.kubernetes.io/name: cl-maestro
                   app.kubernetes.io/transport: maestro
                 annotations:
                   hyperfleet.io/generation: "{{ .generation }}"
@@ -154,14 +141,14 @@ spec:
               kind: ConfigMap
               data:
                 cluster_id: "{{ .clusterId }}"
-                cluster_name: "{{ .clusterId }}"
+                cluster_name: "{{ .clusterName }}"
               metadata:
                 name: "{{ .clusterId | lower }}-{{ .metadata.name }}-configmap"
                 namespace: "{{ .clusterId | lower }}-{{ .metadata.name }}-namespace"
                 labels:
                   app.kubernetes.io/component: adapter-task-config
                   app.kubernetes.io/instance: "{{ .metadata.name }}"
-                  app.kubernetes.io/name: hyperfleet-adapter
+                  app.kubernetes.io/name: cl-maestro
                   app.kubernetes.io/version: 1.0.0
                   app.kubernetes.io/transport: maestro
                 annotations:
@@ -206,7 +193,7 @@ spec:
               updateStrategy:
                 type: "ServerSideApply"             # Use server-side apply for namespaces
                 serverSideApply:
-                  fieldManager: "hyperfleet-adapter" # Field manager name for conflict resolution
+                  fieldManager: "cl-maestro" # Field manager name for conflict resolution
                   force: false                      # Don't force conflicts (fail on conflicts)
               feedbackRules:
                 - type: "JSONPaths"                 # Use JSON path expressions for status feedback

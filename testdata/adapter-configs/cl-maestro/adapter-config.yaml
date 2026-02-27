@@ -12,12 +12,10 @@ spec:
 
   # Log the full merged configuration after load (default: false)
   debugConfig: true
-  log:
-    level: debug
 
   clients:
     hyperfleetApi:
-      baseUrl: http://hyperfleet-api:8000
+      baseUrl: CHANGE_ME
       version: v1
       timeout: 2s
       retryAttempts: 3
@@ -25,8 +23,8 @@ spec:
 
     broker:
       # These values are overridden at deploy time via env vars from Helm values
-      subscriptionId: "placeholder"
-      topic: "placeholder"
+      subscriptionId: CHANGE_ME
+      topic: CHANGE_ME
 
     maestro:
       grpcServerAddress: "maestro-grpc.maestro.svc.cluster.local:8090"
@@ -37,11 +35,11 @@ spec:
       
       # Source identifier for CloudEvents routing (must be unique across adapters)
       # Environment variable: HYPERFLEET_MAESTRO_SOURCE_ID
-      sourceId: "hyperfleet-adapter"
+      sourceId: "cl-maestro"
       
       # Client identifier (defaults to sourceId if not specified)
       # Environment variable: HYPERFLEET_MAESTRO_CLIENT_ID
-      clientId: "hyperfleet-adapter-client"
+      clientId: "cl-maestro-client"
       insecure: true
       
       # Authentication configuration

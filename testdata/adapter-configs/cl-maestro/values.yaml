@@ -1,14 +1,14 @@
 adapterConfig:
   create: true
   files:
-    adapter-config.yaml: clusters-cl-maestro/adapter-config.yaml
+    adapter-config.yaml: cl-maestro/adapter-config.yaml
   log:
     level: debug
 
 adapterTaskConfig:
   create: true
   files:
-    task-config.yaml: clusters-cl-maestro/adapter-task-config.yaml
+    task-config.yaml: cl-maestro/adapter-task-config.yaml
 
 broker:
   create: true
