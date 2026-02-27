@@ -54,8 +54,14 @@ func newHelper(cfg *config.Config) (*Helper, error) {
 		return nil, err
 	}
 
+	k8sClient, err := initK8sClient()
+	if err != nil {
+		return nil, err
+	}
+
 	return &Helper{
-		Cfg:    cfg,
-		Client: cl,
+		Cfg:       cfg,
+		Client:    cl,
+		K8sClient: k8sClient,
 	}, nil
 }
