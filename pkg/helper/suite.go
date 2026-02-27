@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	"github.com/openshift-hyperfleet/hyperfleet-e2e/pkg/client"
+	k8sclient "github.com/openshift-hyperfleet/hyperfleet-e2e/pkg/client/kubernetes"
 	"github.com/openshift-hyperfleet/hyperfleet-e2e/pkg/config"
 )
 
@@ -57,7 +58,7 @@ func newHelper(cfg *config.Config) (*Helper, error) {
 		return nil, err
 	}
 
-	k8sClient, err := initK8sClient()
+	k8sClient, err := k8sclient.NewClient()
 	if err != nil {
 		return nil, err
 	}
