@@ -123,15 +123,16 @@ func (c *Client) GetUniqueJobByLabels(ctx context.Context, namespace string, lab
 	}
 
 	labelSelector := labels.SelectorFromSet(labelMap).String()
-	switch len(jobs) {
-	case 0:
+
+	if len(jobs) == 0 {
 		return nil, fmt.Errorf("no job found in namespace %s with selector %s", namespace, labelSelector)
-	case 1:
-		return &jobs[0], nil
-	default:
+	}
+	if len(jobs) > 1 {
 		return nil, fmt.Errorf("multiple jobs (%d) found in namespace %s with selector %s - expected exactly one",
 			len(jobs), namespace, labelSelector)
 	}
+
+	return &jobs[0], nil
 }
 
 // GetUniqueDeploymentByLabels fetches exactly one deployment matching labels in namespace.
@@ -143,15 +144,16 @@ func (c *Client) GetUniqueDeploymentByLabels(ctx context.Context, namespace stri
 	}
 
 	labelSelector := labels.SelectorFromSet(labelMap).String()
-	switch len(deployments) {
-	case 0:
+
+	if len(deployments) == 0 {
 		return nil, fmt.Errorf("no deployment found in namespace %s with selector %s", namespace, labelSelector)
-	case 1:
-		return &deployments[0], nil
-	default:
+	}
+	if len(deployments) > 1 {
 		return nil, fmt.Errorf("multiple deployments (%d) found in namespace %s with selector %s - expected exactly one",
 			len(deployments), namespace, labelSelector)
 	}
+
+	return &deployments[0], nil
 }
 
 // HasNamespacePhase checks if namespace is in the specified phase
