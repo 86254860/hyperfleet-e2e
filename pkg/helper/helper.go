@@ -3,19 +3,19 @@ package helper
 import (
     "context"
     "fmt"
-    "os/exec"
-    "time"
 
     "github.com/openshift-hyperfleet/hyperfleet-e2e/pkg/api/openapi"
     "github.com/openshift-hyperfleet/hyperfleet-e2e/pkg/client"
+    k8sclient "github.com/openshift-hyperfleet/hyperfleet-e2e/pkg/client/kubernetes"
     "github.com/openshift-hyperfleet/hyperfleet-e2e/pkg/config"
     "github.com/openshift-hyperfleet/hyperfleet-e2e/pkg/logger"
 )
 
 // Helper provides utility functions for e2e tests
 type Helper struct {
-    Cfg    *config.Config
-    Client *client.HyperFleetClient
+    Cfg       *config.Config
+    Client    *client.HyperFleetClient
+    K8sClient *k8sclient.Client
 }
 
 // GetTestCluster creates a new temporary test cluster
@@ -36,24 +36,28 @@ func (h *Helper) GetTestCluster(ctx context.Context, payloadPath string) (string
 // CleanupTestCluster deletes the temporary test cluster
 // TODO: Replace this workaround with API DELETE once HyperFleet API supports
 // DELETE operations for clusters resource type:
-//   return h.Client.DeleteCluster(ctx, clusterID)
-// Current workaround: Delete the Kubernetes namespace using kubectl
+//
+//    return h.Client.DeleteCluster(ctx, clusterID)
+//
+// Temporary workaround: delete the Kubernetes namespace using client-go (may temporarily hardcode a timeout duration).
 func (h *Helper) CleanupTestCluster(ctx context.Context, clusterID string) error {
     logger.Info("deleting cluster namespace (workaround)", "cluster_id", clusterID, "namespace", clusterID)
 
-    // Create context with timeout for kubectl command
-    cmdCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
-    defer cancel()
-
-    // Execute kubectl delete namespace command
-    cmd := exec.CommandContext(cmdCtx, "kubectl", "delete", "namespace", clusterID)
-    output, err := cmd.CombinedOutput()
-    if err != nil {
-        logger.Error("failed to delete cluster namespace", "cluster_id", clusterID, "error", err, "output", string(output))
-        return fmt.Errorf("failed to delete namespace %s: %w (output: %s)", clusterID, err, string(output))
+    // Guard against nil K8sClient
+    if h == nil || h.K8sClient == nil {
+        err := fmt.Errorf("K8sClient is nil, cannot delete namespace")
+        logger.Error("K8sClient is nil", "cluster_id", clusterID)
+        return err
     }
 
-    logger.Info("successfully deleted cluster namespace", "cluster_id", clusterID, "output", string(output))
+    // Delete namespace and wait for deletion to complete
+    err := h.K8sClient.DeleteNamespaceAndWait(ctx, clusterID)
+    if err != nil {
+        logger.Error("failed to delete cluster namespace", "cluster_id", clusterID, "error", err)
+        return err
+    }
+
+    logger.Info("successfully deleted cluster namespace", "cluster_id", clusterID)
     return nil
 }
 

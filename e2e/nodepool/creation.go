@@ -91,9 +91,8 @@ var _ = ginkgo.Describe(lifecycleTestName,
 			}
 
 			ginkgo.By("cleaning up test cluster " + clusterID)
-			if err := h.CleanupTestCluster(ctx, clusterID); err != nil {
-				ginkgo.GinkgoWriter.Printf("Warning: failed to cleanup cluster %s: %v\n", clusterID, err)
-			}
+			err := h.CleanupTestCluster(ctx, clusterID)
+			Expect(err).NotTo(HaveOccurred(), "failed to cleanup cluster %s", clusterID)
 		})
 	},
 )

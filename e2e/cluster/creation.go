@@ -236,6 +236,18 @@ var _ = ginkgo.Describe("[Suite: cluster][baseline] Cluster Resource Type Lifecy
                             "Kubernetes resource for adapter %s should be created and reach desired state", adapterName)
                         ginkgo.GinkgoWriter.Printf("Successfully verified K8s resource for adapter: %s\n", adapterName)
                     }
+
+                    ginkgo.By("Verify final cluster state to ensure Ready before cleanup")
+                    // Wait for cluster Ready condition to prevent namespace deletion conflicts
+                    // Without this, adapters may still be creating resources during cleanup
+                    err := h.WaitForClusterCondition(
+                        ctx,
+                        clusterID,
+                        client.ConditionTypeReady,
+                        openapi.ResourceConditionStatusTrue,
+                        h.Cfg.Timeouts.Cluster.Ready,
+                    )
+                    Expect(err).NotTo(HaveOccurred(), "cluster Ready condition should transition to True before cleanup")
                 })
         })
 
@@ -381,9 +393,8 @@ var _ = ginkgo.Describe("[Suite: cluster][baseline] Cluster Resource Type Lifecy
             }
 
             ginkgo.By("cleaning up cluster " + clusterID)
-            if err := h.CleanupTestCluster(ctx, clusterID); err != nil {
-                ginkgo.GinkgoWriter.Printf("Warning: failed to cleanup cluster %s: %v\n", clusterID, err)
-            }
+            err := h.CleanupTestCluster(ctx, clusterID)
+            Expect(err).NotTo(HaveOccurred(), "failed to cleanup cluster %s", clusterID)
         })
     },
 )

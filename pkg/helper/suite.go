@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	"github.com/openshift-hyperfleet/hyperfleet-e2e/pkg/client"
+	k8sclient "github.com/openshift-hyperfleet/hyperfleet-e2e/pkg/client/kubernetes"
 	"github.com/openshift-hyperfleet/hyperfleet-e2e/pkg/config"
 )
 
@@ -14,18 +15,21 @@ var (
 	configMutex sync.RWMutex
 )
 
+// SetSuiteConfig sets the global suite configuration for the test suite
 func SetSuiteConfig(cfg *config.Config) {
 	configMutex.Lock()
 	defer configMutex.Unlock()
 	suiteConfig = cfg
 }
 
+// GetSuiteConfig returns the global suite configuration
 func GetSuiteConfig() *config.Config {
 	configMutex.RLock()
 	defer configMutex.RUnlock()
 	return suiteConfig
 }
 
+// ClearSuiteConfig clears the global suite configuration
 func ClearSuiteConfig() {
 	configMutex.Lock()
 	defer configMutex.Unlock()
@@ -54,8 +58,14 @@ func newHelper(cfg *config.Config) (*Helper, error) {
 		return nil, err
 	}
 
+	k8sClient, err := k8sclient.NewClient()
+	if err != nil {
+		return nil, err
+	}
+
 	return &Helper{
-		Cfg:    cfg,
-		Client: cl,
+		Cfg:       cfg,
+		Client:    cl,
+		K8sClient: k8sClient,
 	}, nil
 }
