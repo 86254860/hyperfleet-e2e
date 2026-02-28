@@ -5,6 +5,7 @@ import (
     "strings"
     "testing"
 
+    k8sclient "github.com/openshift-hyperfleet/hyperfleet-e2e/pkg/client/kubernetes"
     appsv1 "k8s.io/api/apps/v1"
     batchv1 "k8s.io/api/batch/v1"
     corev1 "k8s.io/api/core/v1"
@@ -121,7 +122,7 @@ func TestVerifyNamespaceActive(t *testing.T) {
                 }
             }
 
-            h := &Helper{K8sClient: fakeClient}
+            h := &Helper{K8sClient: &k8sclient.Client{Interface: fakeClient}}
             err := h.VerifyNamespaceActive(context.TODO(), tt.namespaceName, tt.expectedLabels, tt.expectedAnnotations)
 
             if tt.wantErr {
@@ -244,7 +245,7 @@ func TestVerifyJobComplete(t *testing.T) {
                 }
             }
 
-            h := &Helper{K8sClient: fakeClient}
+            h := &Helper{K8sClient: &k8sclient.Client{Interface: fakeClient}}
             err = h.VerifyJobComplete(context.TODO(), tt.namespace, tt.expectedLabels, tt.expectedAnnotations)
 
             if tt.wantErr {
@@ -396,7 +397,7 @@ func TestVerifyDeploymentAvailable(t *testing.T) {
                 }
             }
 
-            h := &Helper{K8sClient: fakeClient}
+            h := &Helper{K8sClient: &k8sclient.Client{Interface: fakeClient}}
             err = h.VerifyDeploymentAvailable(context.TODO(), tt.namespace, tt.expectedLabels, tt.expectedAnnotations)
 
             if tt.wantErr {

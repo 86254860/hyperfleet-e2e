@@ -3,23 +3,19 @@ package helper
 import (
     "context"
     "fmt"
-    "time"
 
     "github.com/openshift-hyperfleet/hyperfleet-e2e/pkg/api/openapi"
     "github.com/openshift-hyperfleet/hyperfleet-e2e/pkg/client"
+    k8sclient "github.com/openshift-hyperfleet/hyperfleet-e2e/pkg/client/kubernetes"
     "github.com/openshift-hyperfleet/hyperfleet-e2e/pkg/config"
     "github.com/openshift-hyperfleet/hyperfleet-e2e/pkg/logger"
-    apierrors "k8s.io/apimachinery/pkg/api/errors"
-    metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-    "k8s.io/apimachinery/pkg/util/wait"
-    "k8s.io/client-go/kubernetes"
 )
 
 // Helper provides utility functions for e2e tests
 type Helper struct {
     Cfg       *config.Config
     Client    *client.HyperFleetClient
-    K8sClient kubernetes.Interface
+    K8sClient *k8sclient.Client
 }
 
 // GetTestCluster creates a new temporary test cluster
@@ -47,34 +43,18 @@ func (h *Helper) GetTestCluster(ctx context.Context, payloadPath string) (string
 func (h *Helper) CleanupTestCluster(ctx context.Context, clusterID string) error {
     logger.Info("deleting cluster namespace (workaround)", "cluster_id", clusterID, "namespace", clusterID)
 
-    // Delete namespace using client-go
-    err := h.K8sClient.CoreV1().Namespaces().Delete(ctx, clusterID, metav1.DeleteOptions{})
-    if err != nil && !apierrors.IsNotFound(err) {
-        logger.Error("failed to delete cluster namespace", "cluster_id", clusterID, "error", err)
-        return fmt.Errorf("failed to delete namespace %s: %w", clusterID, err)
+    // Guard against nil K8sClient
+    if h == nil || h.K8sClient == nil {
+        err := fmt.Errorf("K8sClient is nil, cannot delete namespace")
+        logger.Error("K8sClient is nil", "cluster_id", clusterID)
+        return err
     }
 
-    // Wait for namespace to be fully deleted (garbage collection finalization)
-    logger.Info("waiting for namespace deletion to complete", "cluster_id", clusterID)
-    backoff := wait.Backoff{
-        Duration: 500 * time.Millisecond,
-        Factor:   1.5,
-        Jitter:   0.1,
-        Steps:    20, // ~2 minutes with exponential backoff
-    }
-    err = wait.ExponentialBackoffWithContext(ctx, backoff, func(ctx context.Context) (bool, error) {
-        _, err := h.K8sClient.CoreV1().Namespaces().Get(ctx, clusterID, metav1.GetOptions{})
-        if apierrors.IsNotFound(err) {
-            return true, nil // Namespace fully deleted
-        }
-        if err != nil {
-            return false, err // Unexpected error
-        }
-        return false, nil // Still exists, keep polling
-    })
+    // Delete namespace and wait for deletion to complete
+    err := h.K8sClient.DeleteNamespaceAndWait(ctx, clusterID)
     if err != nil {
-        logger.Error("timeout waiting for namespace deletion", "cluster_id", clusterID, "error", err)
-        return fmt.Errorf("timeout waiting for namespace %s deletion: %w", clusterID, err)
+        logger.Error("failed to delete cluster namespace", "cluster_id", clusterID, "error", err)
+        return err
     }
 
     logger.Info("successfully deleted cluster namespace", "cluster_id", clusterID)
