@@ -5,8 +5,12 @@ import (
 	"fmt"
 	"time"
 
+	appsv1 "k8s.io/api/apps/v1"
+	batchv1 "k8s.io/api/batch/v1"
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
@@ -70,4 +74,107 @@ func (c *Client) DeleteNamespaceAndWait(ctx context.Context, namespace string) e
 	}
 
 	return nil
+}
+
+// FetchNamespace gets a namespace by name using k8s client-go
+func (c *Client) FetchNamespace(ctx context.Context, name string) (*corev1.Namespace, error) {
+	ns, err := c.CoreV1().Namespaces().Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil, fmt.Errorf("namespace %s not found", name)
+		}
+		return nil, fmt.Errorf("failed to get namespace %s: %w", name, err)
+	}
+	return ns, nil
+}
+
+// FetchJobsByLabels lists jobs matching label selector in namespace
+func (c *Client) FetchJobsByLabels(ctx context.Context, namespace string, labelMap map[string]string) ([]batchv1.Job, error) {
+	labelSelector := labels.SelectorFromSet(labelMap).String()
+	jobs, err := c.BatchV1().Jobs(namespace).List(ctx, metav1.ListOptions{
+		LabelSelector: labelSelector,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to list jobs in namespace %s with selector %s: %w",
+			namespace, labelSelector, err)
+	}
+	return jobs.Items, nil
+}
+
+// FetchDeploymentsByLabels lists deployments matching label selector in namespace
+func (c *Client) FetchDeploymentsByLabels(ctx context.Context, namespace string, labelMap map[string]string) ([]appsv1.Deployment, error) {
+	labelSelector := labels.SelectorFromSet(labelMap).String()
+	deployments, err := c.AppsV1().Deployments(namespace).List(ctx, metav1.ListOptions{
+		LabelSelector: labelSelector,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to list deployments in namespace %s with selector %s: %w",
+			namespace, labelSelector, err)
+	}
+	return deployments.Items, nil
+}
+
+// GetUniqueJobByLabels fetches exactly one job matching labels in namespace.
+// Returns error if zero or multiple jobs are found.
+func (c *Client) GetUniqueJobByLabels(ctx context.Context, namespace string, labelMap map[string]string) (*batchv1.Job, error) {
+	jobs, err := c.FetchJobsByLabels(ctx, namespace, labelMap)
+	if err != nil {
+		return nil, err
+	}
+
+	labelSelector := labels.SelectorFromSet(labelMap).String()
+	switch len(jobs) {
+	case 0:
+		return nil, fmt.Errorf("no job found in namespace %s with selector %s", namespace, labelSelector)
+	case 1:
+		return &jobs[0], nil
+	default:
+		return nil, fmt.Errorf("multiple jobs (%d) found in namespace %s with selector %s - expected exactly one",
+			len(jobs), namespace, labelSelector)
+	}
+}
+
+// GetUniqueDeploymentByLabels fetches exactly one deployment matching labels in namespace.
+// Returns error if zero or multiple deployments are found.
+func (c *Client) GetUniqueDeploymentByLabels(ctx context.Context, namespace string, labelMap map[string]string) (*appsv1.Deployment, error) {
+	deployments, err := c.FetchDeploymentsByLabels(ctx, namespace, labelMap)
+	if err != nil {
+		return nil, err
+	}
+
+	labelSelector := labels.SelectorFromSet(labelMap).String()
+	switch len(deployments) {
+	case 0:
+		return nil, fmt.Errorf("no deployment found in namespace %s with selector %s", namespace, labelSelector)
+	case 1:
+		return &deployments[0], nil
+	default:
+		return nil, fmt.Errorf("multiple deployments (%d) found in namespace %s with selector %s - expected exactly one",
+			len(deployments), namespace, labelSelector)
+	}
+}
+
+// HasNamespacePhase checks if namespace is in the specified phase
+func HasNamespacePhase(ns *corev1.Namespace, phase corev1.NamespacePhase) bool {
+	return ns.Status.Phase == phase
+}
+
+// HasJobCondition checks if job has the specified condition with expected status
+func HasJobCondition(job *batchv1.Job, condType batchv1.JobConditionType, status corev1.ConditionStatus) bool {
+	for _, cond := range job.Status.Conditions {
+		if cond.Type == condType && cond.Status == status {
+			return true
+		}
+	}
+	return false
+}
+
+// HasDeploymentCondition checks if deployment has the specified condition with expected status
+func HasDeploymentCondition(deploy *appsv1.Deployment, condType appsv1.DeploymentConditionType, status corev1.ConditionStatus) bool {
+	for _, cond := range deploy.Status.Conditions {
+		if cond.Type == condType && cond.Status == status {
+			return true
+		}
+	}
+	return false
 }

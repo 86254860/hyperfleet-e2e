@@ -6,12 +6,11 @@ import (
     "sort"
     "strings"
 
+    k8sclient "github.com/openshift-hyperfleet/hyperfleet-e2e/pkg/client/kubernetes"
     "github.com/openshift-hyperfleet/hyperfleet-e2e/pkg/logger"
     appsv1 "k8s.io/api/apps/v1"
     batchv1 "k8s.io/api/batch/v1"
     corev1 "k8s.io/api/core/v1"
-    apierrors "k8s.io/apimachinery/pkg/api/errors"
-    metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
     "k8s.io/apimachinery/pkg/labels"
 )
 
@@ -19,18 +18,15 @@ import (
 func (h *Helper) VerifyNamespaceActive(ctx context.Context, name string, expectedLabels, expectedAnnotations map[string]string) error {
     logger.Info("verifying namespace status", "namespace", name)
 
-    // Get namespace using client-go
-    ns, err := h.K8sClient.CoreV1().Namespaces().Get(ctx, name, metav1.GetOptions{})
+    // Fetch namespace
+    ns, err := h.K8sClient.FetchNamespace(ctx, name)
     if err != nil {
-        if apierrors.IsNotFound(err) {
-            return fmt.Errorf("namespace %s not found", name)
-        }
-        return fmt.Errorf("failed to get namespace %s: %w", name, err)
+        return err
     }
 
-    // Verify phase
-    if ns.Status.Phase != corev1.NamespaceActive {
-        return fmt.Errorf("namespace %s phase is %v, expected Active", name, ns.Status.Phase)
+    // Check phase
+    if !k8sclient.HasNamespacePhase(ns, corev1.NamespaceActive) {
+        return fmt.Errorf("namespace %s phase is %v, expected Active", ns.Name, ns.Status.Phase)
     }
 
     // Verify labels
@@ -51,40 +47,17 @@ func (h *Helper) VerifyNamespaceActive(ctx context.Context, name string, expecte
 // Uses expectedLabels to find the job via label selector - if the list returns a job,
 // it's guaranteed to have those labels (no need to verify them again).
 func (h *Helper) VerifyJobComplete(ctx context.Context, namespace string, expectedLabels, expectedAnnotations map[string]string) error {
-    // Build label selector from expected labels to find the job
     labelSelector := labels.SelectorFromSet(expectedLabels).String()
     logger.Info("verifying job status", "namespace", namespace, "label_selector", labelSelector)
 
-    // List jobs by label selector
-    jobs, err := h.K8sClient.BatchV1().Jobs(namespace).List(ctx, metav1.ListOptions{
-        LabelSelector: labelSelector,
-    })
+    // Get job (handles uniqueness validation internally)
+    job, err := h.K8sClient.GetUniqueJobByLabels(ctx, namespace, expectedLabels)
     if err != nil {
-        return fmt.Errorf("failed to list jobs in namespace %s with selector %s: %w",
-            namespace, labelSelector, err)
+        return err
     }
 
-    // Verify exactly one job
-    if len(jobs.Items) == 0 {
-        return fmt.Errorf("no job found in namespace %s with selector %s", namespace, labelSelector)
-    }
-    if len(jobs.Items) > 1 {
-        return fmt.Errorf("multiple jobs (%d) found in namespace %s with selector %s - expected exactly one",
-            len(jobs.Items), namespace, labelSelector)
-    }
-
-    job := jobs.Items[0]
-
-    // Check completion using JobComplete condition (canonical way)
-    var jobComplete bool
-    for _, cond := range job.Status.Conditions {
-        if cond.Type == batchv1.JobComplete && cond.Status == corev1.ConditionTrue {
-            jobComplete = true
-            break
-        }
-    }
-
-    if !jobComplete {
+    // Check completion
+    if !k8sclient.HasJobCondition(job, batchv1.JobComplete, corev1.ConditionTrue) {
         return fmt.Errorf("job %s in namespace %s has not completed successfully (conditions: %+v)",
             job.Name, namespace, job.Status.Conditions)
     }
@@ -107,40 +80,17 @@ func (h *Helper) VerifyJobComplete(ctx context.Context, namespace string, expect
 // Uses expectedLabels to find the deployment via label selector - if the list returns a deployment,
 // it's guaranteed to have those labels (no need to verify them again).
 func (h *Helper) VerifyDeploymentAvailable(ctx context.Context, namespace string, expectedLabels, expectedAnnotations map[string]string) error {
-    // Build label selector from expected labels to find the deployment
     labelSelector := labels.SelectorFromSet(expectedLabels).String()
     logger.Info("verifying deployment status", "namespace", namespace, "label_selector", labelSelector)
 
-    // List deployments by label selector
-    deployments, err := h.K8sClient.AppsV1().Deployments(namespace).List(ctx, metav1.ListOptions{
-        LabelSelector: labelSelector,
-    })
+    // Get deployment (handles uniqueness validation internally)
+    deploy, err := h.K8sClient.GetUniqueDeploymentByLabels(ctx, namespace, expectedLabels)
     if err != nil {
-        return fmt.Errorf("failed to list deployments in namespace %s with selector %s: %w",
-            namespace, labelSelector, err)
+        return err
     }
 
-    // Verify exactly one deployment
-    if len(deployments.Items) == 0 {
-        return fmt.Errorf("no deployment found in namespace %s with selector %s", namespace, labelSelector)
-    }
-    if len(deployments.Items) > 1 {
-        return fmt.Errorf("multiple deployments (%d) found in namespace %s with selector %s - expected exactly one",
-            len(deployments.Items), namespace, labelSelector)
-    }
-
-    deploy := deployments.Items[0]
-
-    // Check availability using DeploymentAvailable condition (canonical way)
-    var deployAvailable bool
-    for _, cond := range deploy.Status.Conditions {
-        if cond.Type == appsv1.DeploymentAvailable && cond.Status == corev1.ConditionTrue {
-            deployAvailable = true
-            break
-        }
-    }
-
-    if !deployAvailable {
+    // Check availability
+    if !k8sclient.HasDeploymentCondition(deploy, appsv1.DeploymentAvailable, corev1.ConditionTrue) {
         return fmt.Errorf("deployment %s in namespace %s is not available (availableReplicas=%d, conditions: %+v)",
             deploy.Name, namespace, deploy.Status.AvailableReplicas, deploy.Status.Conditions)
     }
