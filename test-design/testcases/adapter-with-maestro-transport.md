@@ -3,13 +3,10 @@
 ## Table of Contents
 
 1. [Adapter can create ManifestWork and report status via Maestro transport](#test-title-adapter-can-create-manifestwork-and-report-status-via-maestro-transport)
-2. [K8s resources can be verified on target cluster after ManifestWork applied](#test-title-k8s-resources-can-be-verified-on-target-cluster-after-manifestwork-applied)
-3. [Adapter can skip ManifestWork creation when generation is unchanged](#test-title-adapter-can-skip-manifestwork-creation-when-generation-is-unchanged)
-4. [Both K8s and Maestro transport adapters can process the same event independently](#test-title-both-k8s-and-maestro-transport-adapters-can-process-the-same-event-independently)
-5. [Adapter can route ManifestWork to correct consumer based on targetCluster](#test-title-adapter-can-route-manifestwork-to-correct-consumer-based-on-targetcluster)
-6. [Adapter can handle Maestro server unavailability gracefully](#test-title-adapter-can-handle-maestro-server-unavailability-gracefully)
-7. [Adapter can handle invalid targetCluster (consumer not found) gracefully](#test-title-adapter-can-handle-invalid-targetcluster-consumer-not-found-gracefully)
-8. [Adapter can reject invalid Maestro TLS configuration at startup](#test-title-adapter-can-validate-maestro-tls-authentication-configuration)
+2. [Adapter can skip ManifestWork operation when generation is unchanged](#test-title-adapter-can-skip-manifestwork-operation-when-generation-is-unchanged)
+3. [Adapter can route ManifestWork to correct consumer based on targetCluster](#test-title-adapter-can-route-manifestwork-to-correct-consumer-based-on-targetcluster)
+4. [Adapter can handle Maestro server unavailability gracefully](#test-title-adapter-can-handle-maestro-server-unavailability-gracefully)
+5. [Adapter can handle invalid targetCluster (consumer not found) gracefully](#test-title-adapter-can-handle-invalid-targetcluster-consumer-not-found-gracefully)
 
 ---
 
@@ -44,9 +41,10 @@ make install-api
 # 7. Deploy Sentinels
 make install-sentinels
 
-# 8. Deploy adapters
-make install-adapter1   # K8s transport adapter
-make install-adapter2   # Maestro transport adapter
+# 8. Deploy Maestro transport adapter
+# The adapter name here must match ADAPTER_NAME below.
+# If using a different adapter (e.g., cl-maestro), update both accordingly.
+make install-adapter2
 
 # 9. Set test variables
 export ADAPTER_NAME='adapter2'
@@ -63,7 +61,7 @@ kubectl port-forward -n hyperfleet svc/hyperfleet-api 8000:8000 &
 
 ### Description
 
-This test validates the complete Maestro transport happy path: creating a cluster via the HyperFleet API triggers the adapter to create a ManifestWork (resource bundle) on the Maestro server, discover the ManifestWork and its nested sub-resources via statusFeedback, evaluate post-processing CEL expressions, and report the final status back to the HyperFleet API. All verifications are done via API calls (Maestro API + HyperFleet Status API).
+This test validates the complete Maestro transport happy path: creating a cluster via the HyperFleet API triggers the adapter to create a ManifestWork (resource bundle) on the Maestro server, the Maestro agent applies the ManifestWork content to the target cluster (verified via kubectl), the adapter discovers the ManifestWork and its nested sub-resources via statusFeedback, evaluates post-processing CEL expressions, and reports the final status back to the HyperFleet API.
 
 ---
 
@@ -228,7 +226,25 @@ Example output:
 ]
 ```
 
-#### Step 5: Verify adapter status report to HyperFleet API
+#### Step 5: Verify K8s resources created by Maestro agent on target cluster
+
+Wait ~15 seconds for the Maestro agent to apply the ManifestWork content to the target cluster.
+
+**Action:**
+```bash
+# Verify Namespace
+kubectl get ns ${CLUSTER_ID}-${ADAPTER_NAME}-namespace
+
+# Verify ConfigMap
+kubectl get configmap ${CLUSTER_ID}-${ADAPTER_NAME}-configmap \
+  -n ${CLUSTER_ID}-${ADAPTER_NAME}-namespace
+```
+
+**Expected Result:**
+- Namespace `${CLUSTER_ID}-${ADAPTER_NAME}-namespace` exists and is `Active`
+- ConfigMap `${CLUSTER_ID}-${ADAPTER_NAME}-configmap` exists in the namespace
+
+#### Step 6: Verify adapter status report to HyperFleet API
 **Action:**
 ```bash
 curl -s ${API_URL}/api/hyperfleet/v1/clusters/${CLUSTER_ID}/statuses \
@@ -288,9 +304,12 @@ Example output:
 }
 ```
 
-#### Step 6: Cleanup
+#### Step 7: Cleanup
 **Action:**
 ```bash
+# Delete the namespace created by Maestro agent
+kubectl delete ns ${CLUSTER_ID}-${ADAPTER_NAME}-namespace --ignore-not-found
+
 # Delete the resource bundle on Maestro (via Maestro API)
 kubectl exec -n maestro deployment/maestro -- \
   curl -s -X DELETE http://localhost:8000/api/maestro/v1/resource-bundles/${RESOURCE_BUNDLE_ID}
@@ -303,107 +322,11 @@ kubectl exec -n maestro deployment/maestro -- \
 
 ---
 
-## Test Title: K8s resources can be verified on target cluster after ManifestWork applied
+## Test Title: Adapter can skip ManifestWork operation when generation is unchanged
 
 ### Description
 
-This test validates that the Maestro agent correctly applies the ManifestWork content to the target cluster by using `kubectl` to verify the K8s resources (ground truth). This is complementary to Test 1 which verifies via API only.
-
----
-
-| **Field** | **Value** |
-|-----------|-----------|
-| **Pos/Neg** | Positive |
-| **Priority** | Tier0 |
-| **Status** | Draft |
-| **Automation** | Not Automated |
-| **Version** | MVP |
-| **Created** | 2026-02-12 |
-| **Updated** | 2026-03-02 |
-
----
-
-### Preconditions
-
-1. HyperFleet API and Sentinel services are deployed and running successfully
-2. Maestro is deployed and running successfully with an active agent
-3. At least one Maestro consumer is registered (e.g., `${MAESTRO_CONSUMER}`)
-4. Adapter is deployed in Maestro transport mode (`transport.client: "maestro"`)
-
----
-
-### Test Steps
-
-#### Step 1: Create a cluster via HyperFleet API
-**Action:**
-```bash
-CLUSTER_ID=$(curl -s -X POST ${API_URL}/api/hyperfleet/v1/clusters \
-  -H "Content-Type: application/json" \
-  -d '{
-    "kind": "Cluster",
-    "name": "k8s-verify-test-'$(date +%Y%m%d-%H%M%S)'",
-    "spec": {
-      "platform": {
-        "type": "gcp",
-        "gcp": {"projectID": "test-project", "region": "us-central1"}
-      },
-      "release": {"version": "4.14.0"}
-    }
-  }' | jq -r '.id')
-echo "CLUSTER_ID=${CLUSTER_ID}"
-```
-
-Wait ~15 seconds for the adapter to process and Maestro agent to apply.
-
-**Expected Result:**
-- API returns HTTP 201 with a valid cluster ID and `generation: 1`
-
-#### Step 2: Verify Namespace created by Maestro agent on target cluster
-**Action:**
-```bash
-kubectl get ns ${CLUSTER_ID}-${ADAPTER_NAME}-namespace
-```
-
-**Expected Result:**
-- Namespace `${CLUSTER_ID}-${ADAPTER_NAME}-namespace` exists and is `Active`
-
-#### Step 3: Verify ConfigMap created by Maestro agent on target cluster
-**Action:**
-```bash
-kubectl get configmap ${CLUSTER_ID}-${ADAPTER_NAME}-configmap \
-  -n ${CLUSTER_ID}-${ADAPTER_NAME}-namespace
-```
-
-**Expected Result:**
-- ConfigMap `${CLUSTER_ID}-${ADAPTER_NAME}-configmap` exists in the namespace
-
-#### Step 4: Cleanup
-**Action:**
-```bash
-# Delete the namespace created by Maestro agent
-kubectl delete ns ${CLUSTER_ID}-${ADAPTER_NAME}-namespace --ignore-not-found
-
-# Capture resource bundle ID and delete from Maestro
-RESOURCE_BUNDLE_ID=$(kubectl exec -n maestro deployment/maestro -- \
-  curl -s http://localhost:8000/api/maestro/v1/resource-bundles \
-  | jq -r --arg cid "${CLUSTER_ID}" \
-    '.items[] | select(.metadata.labels["hyperfleet.io/cluster-id"] == $cid) | .id')
-kubectl exec -n maestro deployment/maestro -- \
-  curl -s -X DELETE http://localhost:8000/api/maestro/v1/resource-bundles/${RESOURCE_BUNDLE_ID}
-```
-
-> **Note:** This is a workaround cleanup method. Once the HyperFleet API supports DELETE operations for clusters, this step should be replaced with:
-> ```bash
-> curl -X DELETE ${API_URL}/api/hyperfleet/v1/clusters/${CLUSTER_ID}
-> ```
-
----
-
-## Test Title: Adapter can skip ManifestWork creation when generation is unchanged
-
-### Description
-
-This test validates the generation-based idempotency mechanism for ManifestWork operations via Maestro transport. When a ManifestWork does not exist, it should be created. When the same event is reprocessed with the same generation, the update should be skipped. The "Update" operation (when generation changes) is post-MVP because the HyperFleet API does not currently support cluster PATCH/UPDATE to increment the generation.
+This test validates the generation-based idempotency mechanism for ManifestWork operations via Maestro transport. When a ManifestWork does not exist, it should be created. When the same event is reprocessed with the same generation, the operation should be skipped.
 
 ---
 
@@ -479,125 +402,12 @@ kubectl exec -n maestro deployment/maestro -- \
 **Expected Result:**
 - `version: 1` remains unchanged across multiple Skip operations
 
-#### Step 4: (Post-MVP) Update operation when generation changes
-
-> **Note:** The "Update" operation cannot currently be tested end-to-end because the HyperFleet API does not support cluster PATCH/UPDATE to increment the generation. This is a post-MVP feature. The adapter code supports generation-based update via JSON merge patch when `generation` changes, which can be observed in unit tests.
-
-#### Step 5: Cleanup
+#### Step 4: Cleanup
 **Action:**
 ```bash
 kubectl delete ns ${CLUSTER_ID}-${ADAPTER_NAME}-namespace --ignore-not-found
 kubectl exec -n maestro deployment/maestro -- \
   curl -s -X DELETE http://localhost:8000/api/maestro/v1/resource-bundles/${RESOURCE_BUNDLE_ID}
-```
-
-> **Note:** This is a workaround cleanup method. Once the HyperFleet API supports DELETE operations for clusters, this step should be replaced with:
-> ```bash
-> curl -X DELETE ${API_URL}/api/hyperfleet/v1/clusters/${CLUSTER_ID}
-> ```
-
----
-
-## Test Title: Both K8s and Maestro transport adapters can process the same event independently
-
-### Description
-
-This test compares the behavior of two adapters processing the same cluster event: adapter1 (K8s transport) creates resources directly on the hub cluster, while adapter2 (Maestro transport) creates a ManifestWork via Maestro which the agent applies to a target cluster. Both adapters report status independently to the HyperFleet API. This validates that transport selection is a deployment concern and does not affect the adapter framework's status reporting pattern.
-
----
-
-| **Field** | **Value** |
-|-----------|-----------|
-| **Pos/Neg** | Positive |
-| **Priority** | Tier1 |
-| **Status** | Draft |
-| **Automation** | Not Automated |
-| **Version** | MVP |
-| **Created** | 2026-02-12 |
-| **Updated** | 2026-02-26 |
-
----
-
-### Preconditions
-
-1. HyperFleet API and Sentinel are deployed
-2. Both adapter1 (K8s transport) and adapter2 (Maestro transport) are deployed simultaneously
-3. Both adapters subscribe to the same broker topic and process the same events
-4. Each adapter has a unique `metadata.name` in its task config (e.g., `adapter1`, `adapter2`)
-
----
-
-### Test Steps
-
-#### Step 1: Verify both adapters are running
-**Action:**
-```bash
-kubectl get pods -n hyperfleet -l app.kubernetes.io/name=hyperfleet-adapter --no-headers
-```
-
-**Expected Result:**
-- Two adapter pods running: `hyperfleet-adapter1-*` and `hyperfleet-adapter2-*`
-
-#### Step 2: Create a cluster (both adapters will process the event)
-**Action:**
-```bash
-CLUSTER_ID=$(curl -s -X POST ${API_URL}/api/hyperfleet/v1/clusters \
-  -H "Content-Type: application/json" \
-  -d '{
-    "kind": "Cluster",
-    "name": "transport-compare-'$(date +%Y%m%d-%H%M%S)'",
-    "spec": {
-      "platform": {"type": "gcp", "gcp": {"projectID": "test", "region": "us-central1"}},
-      "release": {"version": "4.14.0"}
-    }
-  }' | jq -r '.id')
-echo "CLUSTER_ID=${CLUSTER_ID}"
-```
-
-**Expected Result:**
-- API returns HTTP 201 with a valid cluster ID
-
-#### Step 3: Verify K8s transport adapter (adapter1) created resources directly
-**Action:**
-```bash
-# adapter1 creates a ConfigMap directly in the hyperfleet namespace
-kubectl get configmap -n hyperfleet | grep ${CLUSTER_ID}-adapter1
-```
-
-**Expected Result:**
-- ConfigMap `${CLUSTER_ID}-adapter1-configmap` exists in the `hyperfleet` namespace (directly created by adapter1)
-
-#### Step 4: Verify Maestro transport adapter (adapter2) created ManifestWork
-**Action:**
-```bash
-# adapter2 creates a ManifestWork via Maestro, which creates resources in a separate namespace
-kubectl get ns | grep ${CLUSTER_ID}-adapter2
-kubectl get configmap -n ${CLUSTER_ID}-adapter2-namespace
-```
-
-**Expected Result:**
-- Namespace `${CLUSTER_ID}-adapter2-namespace` created by Maestro agent
-- ConfigMap `${CLUSTER_ID}-adapter2-configmap` inside that namespace
-
-#### Step 5: Compare status reports from both adapters
-**Action:**
-```bash
-curl -s ${API_URL}/api/hyperfleet/v1/clusters/${CLUSTER_ID}/statuses \
-  | jq '.items[] | {adapter: .adapter, conditions: [.conditions[] | {type, status, reason}]}'
-```
-
-**Expected Result:**
-- Two separate status entries (one per adapter), no overwriting
-- Both report the same condition types: Applied, Available, Health
-- adapter1 (K8s) shows Applied=True because it directly creates the ConfigMap
-- adapter2 (Maestro) shows Applied=True (AppliedManifestWorkComplete)
-- Each adapter's status is independently maintained
-
-#### Step 6: Cleanup
-**Action:**
-```bash
-kubectl delete configmap ${CLUSTER_ID}-adapter1-configmap -n hyperfleet --ignore-not-found
-kubectl delete ns ${CLUSTER_ID}-adapter2-namespace --ignore-not-found
 ```
 
 > **Note:** This is a workaround cleanup method. Once the HyperFleet API supports DELETE operations for clusters, this step should be replaced with:
@@ -853,17 +663,15 @@ curl -s ${API_URL}/api/hyperfleet/v1/clusters/${CLUSTER_ID}/statuses \
 **Action:**
 ```bash
 kubectl delete ns ${CLUSTER_ID}-${ADAPTER_NAME}-namespace --ignore-not-found
+
+# Ensure Maestro is fully restored
+kubectl get pods -n maestro --no-headers
 ```
 
 > **Note:** This is a workaround cleanup method. Once the HyperFleet API supports DELETE operations for clusters, this step should be replaced with:
 > ```bash
 > curl -X DELETE ${API_URL}/api/hyperfleet/v1/clusters/${CLUSTER_ID}
 > ```
-
-```bash
-# Ensure Maestro is fully restored
-kubectl get pods -n maestro --no-headers
-```
 
 ---
 
@@ -988,67 +796,3 @@ kubectl rollout status deployment/hyperfleet-${ADAPTER_NAME} -n hyperfleet --tim
 
 > **Important:** Always restore the adapter config after this test to avoid impacting other tests.
 
----
-
-## Test Title: Adapter can reject invalid Maestro TLS configuration at startup
-
-### Description
-
-This test validates that the adapter fails at startup with a clear error message when `insecure: false` is configured without providing certificates or HTTPS URL. Full mTLS testing requires a Maestro deployment with TLS enabled, which is not available in the test environment.
-
----
-
-| **Field** | **Value** |
-|-----------|-----------|
-| **Pos/Neg** | Negative |
-| **Priority** | Tier2 |
-| **Status** | Draft |
-| **Automation** | Not Automated |
-| **Version** | MVP |
-| **Created** | 2026-02-12 |
-| **Updated** | 2026-02-26 |
-
----
-
-### Preconditions
-
-1. Maestro server is deployed (currently without TLS)
-2. The adapter Helm chart is available for deployment
-
----
-
-### Test Steps
-
-#### Step 1: Deploy a new adapter with `insecure: false` configuration
-**Action:**
-- Deploy a new adapter instance configured with `insecure: false` while keeping the HTTP URL (no certs provided):
-```bash
-make install-adapter2 ADAPTER_INSECURE=false
-```
-
-> **Note:** `ADAPTER_INSECURE` is not yet supported as a Makefile parameter. As a workaround, manually set `insecure: false` in `helm/adapter2/adapter-config.yaml` and run `make install-adapter2`.
-
-**Expected Result:**
-- Adapter pod enters `CrashLoopBackOff` because HTTP URL is used with `insecure: false`
-
-#### Step 2: Verify startup error message
-**Action:**
-```bash
-kubectl logs -n hyperfleet -l app.kubernetes.io/instance=hyperfleet-${ADAPTER_NAME} --tail=20 \
-  | grep -E "Error|error|failed"
-```
-
-**Expected Result:**
-- Adapter fails at startup (fail-fast), not at runtime
-- Error code `hyperfleet-adapter-17` with clear message about TLS/scheme mismatch
-- Error message suggests corrective action: use `https://` URL or set `Insecure=true`
-
-#### Step 3: Cleanup
-**Action:**
-- Redeploy adapter with the correct configuration:
-```bash
-make install-adapter2
-```
-
-**Expected Result:**
-- Adapter starts successfully with default `insecure: true` configuration
