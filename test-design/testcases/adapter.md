@@ -596,4 +596,20 @@ curl -s ${API_URL}/api/hyperfleet/v1/clusters/{cluster_id}/statuses | jq '.'
 - Previously reported statuses from other adapters are not affected
 - Incomplete status entries are stored but do not interfere with cluster Ready/Available evaluation
 
+#### Step 5: Cleanup resources
+
+**Action:**
+- Delete the namespace created for this cluster:
+```bash
+kubectl delete namespace {cluster_id}
+```
+
+**Expected Result:**
+- Namespace and all associated resources are deleted successfully
+
+**Note:** This is a workaround cleanup method. Once CLM supports DELETE operations for "clusters" resource type, the namespace deletion should be replaced with:
+```bash
+curl -X DELETE ${API_URL}/api/hyperfleet/v1/clusters/{cluster_id}
+```
+
 ---
