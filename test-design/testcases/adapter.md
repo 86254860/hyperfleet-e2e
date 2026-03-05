@@ -2,19 +2,20 @@
 
 ## Table of Contents
 
-1. [Adapter framework can detect and report failures to cluster API endpoints](#test-title-adapter-framework-can-detect-and-report-failures-to-cluster-api-endpoints)
-2. [Adapter Job failure correctly reports Health=False](#test-title-adapter-job-failure-correctly-reports-healthfalse)
-3. [Adapter framework can detect and handle resource timeouts](#test-title-adapter-framework-can-detect-and-handle-resource-timeouts)
-4. [Adapter crash recovery and message redelivery](#test-title-adapter-crash-recovery-and-message-redelivery)
-5. [API handles incomplete adapter status reports gracefully](#test-title-api-handles-incomplete-adapter-status-reports-gracefully)
+1. [Adapter can detect and report invalid K8s resource failures](#test-title-adapter-can-detect-and-report-invalid-k8s-resource-failures)
+2. [Adapter can detect and handle precondition timeouts](#test-title-adapter-can-detect-and-handle-precondition-timeouts)
+3. [Adapter can recover from crash and process redelivered events](#test-title-adapter-can-recover-from-crash-and-process-redelivered-events)
+4. [Adapter can process pending events after restart](#test-title-adapter-can-process-pending-events-after-restart)
+5. [Adapter can handle duplicate events for same cluster idempotently](#test-title-adapter-can-handle-duplicate-events-for-same-cluster-idempotently)
+6. [API can handle incomplete adapter status reports gracefully](#test-title-api-can-handle-incomplete-adapter-status-reports-gracefully)
 
 ---
 
-## Test Title: Adapter framework can detect and report failures to cluster API endpoints
+## Test Title: Adapter can detect and report invalid K8s resource failures
 
 ### Description
 
-This test validates that the adapter framework correctly detects and reports failures when attempting to create invalid Kubernetes resources on the target cluster. It ensures that when an adapter's configuration contains invalid K8s resource objects, the framework properly handles the API server rejection, logs meaningful error messages, and reports the failure status back to the HyperFleet API with appropriate condition states and error details.
+This test validates that the adapter framework correctly detects and reports failures when attempting to create invalid Kubernetes resources on the target cluster. It ensures that when an adapter's configuration contains invalid K8s resource objects, the framework properly handles the API server rejection and reports the failure status back to the HyperFleet API with appropriate condition states and error details.
 
 
 ---
@@ -35,169 +36,55 @@ This test validates that the adapter framework correctly detects and reports fai
 ### Preconditions
 1. Environment is prepared using [hyperfleet-infra](https://github.com/openshift-hyperfleet/hyperfleet-infra) with all required platform resources
 2. HyperFleet API and HyperFleet Sentinel services are deployed and running successfully
+3. A dedicated test adapter is deployed via Helm with AdapterConfig containing invalid K8s resource objects
 
 ---
 
 ### Test Steps
 
-#### Step 1: Test template rendering errors
-**Action:**
-- Configure AdapterConfig with invalid AdapterConfig (invalid K8s resource object)
-- Deploy the test adapter
-
-**Expected Result:**
-- Adapter detects template rendering error
-- Log reports failure with clear error message
-
-#### Step 2: Send POST request to create a new cluster
+#### Step 1: Send POST request to create a new cluster
 **Action:**
 - Execute cluster creation request:
 ```bash
 curl -X POST ${API_URL}/api/hyperfleet/v1/clusters \
   -H "Content-Type: application/json" \
-  -d <cluster_create_payload>
+  -d @testdata/payloads/clusters/cluster-request.json
 ```
 
 **Expected Result:**
 - API returns successful response
 
-#### Step 3: Wait for timeout and Verify Timeout Handling
+#### Step 2: Verify adapter status reports failure
 **Action:**
-- Wait for some minutes
-- Verify adapter status
+- Poll adapter statuses:
+```bash
+curl -X GET ${API_URL}/api/hyperfleet/v1/clusters/{cluster_id}/statuses
+```
 
 **Expected Result:**
-```bash
-   curl -X GET ${API_URL}/api/hyperfleet/v1/clusters/<cluster_id>/statuses \
-     | jq -r '.items[] | select(.adapter=="<adapter_name>") | .conditions[] | select(.type=="Available")'
+- The test adapter reports `Available` condition with `status: "False"`, with reason indicating invalid K8s resource
 
-   # Example:
-   # {
-   #   "type": "Available",
-   #   "status": "False",
-   #   "reason": "`invalid k8s object` resource is invalid",
-   #   "message": "Invalid Kubernetes object"
-   # }
+#### Step 3: Cleanup resources
+
+**Action:**
+- Delete the namespace created for this cluster:
+```bash
+kubectl delete namespace {cluster_id}
+```
+- Uninstall the test adapter Helm release
+
+**Expected Result:**
+- Namespace and all associated resources are deleted successfully
+- Test adapter deployment is removed
+
+**Note:** This is a workaround cleanup method. Once CLM supports DELETE operations for "clusters" resource type, the namespace deletion should be replaced with:
+```bash
+curl -X DELETE ${API_URL}/api/hyperfleet/v1/clusters/{cluster_id}
 ```
 
 ---
 
-
-## Test Title: Adapter Job failure correctly reports Health=False
-
-### Description
-
-This test validates that when an adapter Job runs but exits with a non-zero exit code (simulated via `SIMULATE_RESULT=failure`), the adapter framework correctly detects the job failure and reports `Health=False` back to the HyperFleet API. This is distinct from invalid K8s resource errors — this tests the scenario where the Job is created and scheduled successfully but the workload itself fails.
-
-**Note:** There are two distinct adapter failure modes that should be differentiated:
-- **Job execution failure** (this test): Job is created successfully (`Applied=True`) but the workload fails (`Health=False`). The `data` field should contain error details (exit code, error message).
-- **Job creation failure** (covered by test 1 "Adapter framework can detect and report failures"): The Job or K8s resource cannot be created at all (`Applied=False`, `Health=False`).
-
-Both failure modes should be verified for Cluster and NodePool resource types, as the adapter framework logic applies to both.
-
----
-
-| **Field** | **Value** |
-|-----------|-----------|
-| **Pos/Neg** | Negative |
-| **Priority** | Tier2 |
-| **Status** | Draft |
-| **Automation** | Not Automated |
-| **Version** | MVP |
-| **Created** | 2026-02-11 |
-| **Updated** | 2026-02-11 |
-
-
----
-
-### Preconditions
-1. Environment is prepared using [hyperfleet-infra](https://github.com/openshift-hyperfleet/hyperfleet-infra) with all required platform resources
-2. HyperFleet API, Sentinel, and Adapter services are deployed and running successfully
-3. Example-adapter supports `SIMULATE_RESULT=failure` environment variable
-
----
-
-### Test Steps
-
-#### Step 1: Record original adapter configuration and set failure mode
-**Action:**
-- Record current `SIMULATE_RESULT` value for restoration
-- Set adapter to failure mode:
-```bash
-kubectl set env deployment -n hyperfleet -l app.kubernetes.io/instance=example-adapter SIMULATE_RESULT=failure
-kubectl rollout status deployment/example-adapter-hyperfleet-adapter -n hyperfleet --timeout=60s
-```
-
-**Expected Result:**
-- Adapter deployment updated and new pod is Running
-
-#### Step 2: Create a cluster to trigger adapter processing
-**Action:**
-```bash
-curl -X POST ${API_URL}/api/hyperfleet/v1/clusters \
-  -H "Content-Type: application/json" \
-  -d '{
-    "kind": "Cluster",
-    "name": "failure-test",
-    "spec": {"platform": {"type": "gcp", "gcp": {"projectID": "test", "region": "us-central1"}}}
-  }'
-```
-
-**Expected Result:**
-- API returns successful response with cluster ID
-
-#### Step 3: Wait for job execution and verify job failure
-**Action:**
-- Wait for adapter to process the event and job to run
-- Check job status:
-```bash
-kubectl get jobs -n ${CLUSTER_ID} -o json | jq '.items[0].status.conditions[]? | select(.type=="Failed")'
-```
-
-**Expected Result:**
-- Job exists in the cluster namespace
-- Job status shows `Failed=True`
-- Job exit code is non-zero
-
-#### Step 4: Verify adapter status report
-**Action:**
-```bash
-curl -s ${API_URL}/api/hyperfleet/v1/clusters/${CLUSTER_ID}/statuses \
-  | jq '.items[0].conditions'
-```
-
-**Expected Result:**
-- `Applied` condition has `status: "True"` (Job was created successfully before failing)
-- `Available` condition has `status: "False"` (work not completed; currently returns empty string — see Issue #25)
-- `Health` condition has `status: "False"` with reason indicating job failure
-- `data` field contains error details:
-  - Exit code (non-zero)
-  - Error message describing the failure
-
-#### Step 5: Verify top-level resource status reflects failure
-**Action:**
-```bash
-curl -s ${API_URL}/api/hyperfleet/v1/clusters/${CLUSTER_ID} | jq '.status.conditions'
-```
-
-**Expected Result:**
-- `Ready` condition remains `status: "False"` (cluster did not reach ready state)
-- `Available` condition remains `status: "False"`
-- Cluster does not transition to Ready while adapter reports failure
-
-#### Step 6: Restore adapter to normal mode
-**Action:**
-```bash
-kubectl set env deployment -n hyperfleet -l app.kubernetes.io/instance=example-adapter SIMULATE_RESULT=success
-kubectl rollout status deployment/example-adapter-hyperfleet-adapter -n hyperfleet --timeout=60s
-```
-
-**Expected Result:**
-- Adapter restored to normal operation
-
----
-
-## Test Title: Adapter framework can detect and handle resource timeouts
+## Test Title: Adapter can detect and handle precondition timeouts
 
 ### Description
 
@@ -221,83 +108,81 @@ This test validates that the adapter framework correctly detects and handles res
 ### Preconditions
 1. Environment is prepared using [hyperfleet-infra](https://github.com/openshift-hyperfleet/hyperfleet-infra) with all required platform resources
 2. HyperFleet API and HyperFleet Sentinel services are deployed and running successfully
+3. A dedicated timeout-adapter is deployed via Helm with AdapterConfig containing preconditions that cannot be met, for example:
+```yaml
+preconditions:
+  - name: "clusterStatus"
+    apiCall:
+      method: "GET"
+      url: "{{ .hyperfleetApiBaseUrl }}/api/hyperfleet/{{ .hyperfleetApiVersion }}/clusters/{{ .clusterId }}"
+      timeout: 10s
+      retryAttempts: 3
+      retryBackoff: "exponential"
+    capture:
+      - name: "clusterName"
+        field: "name"
+      - name: "clusterPhase"
+        field: "status.phase"
+      - name: "generationId"
+        field: "generation"
+    conditions:
+      - field: "clusterPhase"
+        operator: "in"
+        values: ["NotReady", "Ready"]
+```
 
 ---
 
 ### Test Steps
 
-#### Step 1: Configure adapter with timeout setting
-**Action:**
-- Configure AdapterConfig with non-existed conditions that can't meet the precondition
-```yaml
- preconditions:
-    - name: "clusterStatus"
-      apiCall:
-        method: "GET"
-        url: "{{ .hyperfleetApiBaseUrl }}/api/hyperfleet/{{ .hyperfleetApiVersion }}/clusters/{{ .clusterId }}"
-        timeout: 10s
-        retryAttempts: 3
-        retryBackoff: "exponential"
-      capture:
-        - name: "clusterName"
-          field: "name"
-        - name: "clusterPhase"
-          field: "status.phase"
-        - name: "generationId"
-          field: "generation"
-      conditions:
-        - field: "clusterPhase"
-          operator: "in"
-          values: ["NotReady", "Ready"]
-```  
-- Deploy the test adapter
-
-**Expected Result:**
-- Adapter loads configuration successfully
-- Adapter pods are running successfully
-- Adapter logs show successful initialization
-
-#### Step 2: Send POST request to create a new cluster
+#### Step 1: Send POST request to create a new cluster
 **Action:**
 - Execute cluster creation request:
 ```bash
 curl -X POST ${API_URL}/api/hyperfleet/v1/clusters \
   -H "Content-Type: application/json" \
-  -d <cluster_create_payload>
+  -d @testdata/payloads/clusters/cluster-request.json
 ```
 
 **Expected Result:**
 - API returns successful response
 
-#### Step 3: Wait for timeout and Verify Timeout Handling
+#### Step 2: Verify adapter status reports timeout
 **Action:**
-- Wait for some minutes
-- Verify adapter status
+- Poll adapter statuses:
+```bash
+curl -X GET ${API_URL}/api/hyperfleet/v1/clusters/{cluster_id}/statuses
+```
 
 **Expected Result:**
-```bash
-   curl -X GET ${API_URL}/api/hyperfleet/v1/clusters/<cluster_id>/statuses \
-     | jq -r '.items[] | select(.adapter=="<adapter_name>") | .conditions[] | select(.type=="Available")'
+- The timeout-adapter reports `Available` condition with `status: "False"`, with reason indicating timeout (e.g., `"reason": "JobTimeout"`)
 
-   # Example:
-   # {
-   #   "type": "Available",
-   #   "status": "False",
-   #   "reason": "JobTimeout",
-   #   "message": "Validation job did not complete within 30 seconds"
-   # }
+#### Step 3: Cleanup resources
+
+**Action:**
+- Delete the namespace created for this cluster:
+```bash
+kubectl delete namespace {cluster_id}
+```
+- Uninstall the timeout-adapter Helm release
+
+**Expected Result:**
+- Namespace and all associated resources are deleted successfully
+- Timeout-adapter deployment is removed
+
+**Note:** This is a workaround cleanup method. Once CLM supports DELETE operations for "clusters" resource type, the namespace deletion should be replaced with:
+```bash
+curl -X DELETE ${API_URL}/api/hyperfleet/v1/clusters/{cluster_id}
 ```
 
 ---
 
 
-## Test Title: Adapter crash recovery and message redelivery
+## Test Title: Adapter can recover from crash and process redelivered events
 
 ### Description
 
-This test validates that when an adapter crashes during event processing, the message broker correctly redelivers the message after the adapter recovers. This ensures that no events are lost due to adapter failures and the system maintains eventual consistency.
-
-**Note:** This test requires SIMULATE_RESULT=crash mode in the example-adapter, which may not be implemented.
+This test validates that when an adapter crashes during event processing, the system ensures that pending events are eventually processed after the adapter recovers. This ensures that no events are lost due to adapter failures and the system maintains eventual consistency.
 
 ---
 
@@ -309,7 +194,7 @@ This test validates that when an adapter crashes during event processing, the me
 | **Automation** | Not Automated |
 | **Version** | MVP |
 | **Created** | 2026-02-11 |
-| **Updated** | 2026-02-11 |
+| **Updated** | 2026-03-04 |
 
 
 ---
@@ -317,87 +202,296 @@ This test validates that when an adapter crashes during event processing, the me
 ### Preconditions
 1. Environment is prepared using [hyperfleet-infra](https://github.com/openshift-hyperfleet/hyperfleet-infra)
 2. HyperFleet API, Sentinel, and Adapter services are deployed
-3. Google Pub/Sub is configured with appropriate acknowledgment deadline and retry policy
+3. A dedicated crash-adapter is deployed via Helm with pre-configured crash behavior (`SIMULATE_RESULT=crash`), separate from the normal adapters used in other tests
+4. Message broker is configured with appropriate acknowledgment deadline and retry policy
 
 ---
 
 ### Test Steps
 
-#### Step 1: Configure adapter to crash on event receipt
+#### Step 1: Create a cluster to trigger event
 **Action:**
-- Set adapter environment variable to crash mode:
-```bash
-kubectl set env deployment -n hyperfleet -l app.kubernetes.io/instance=example-adapter SIMULATE_RESULT=crash
-kubectl rollout status deployment/example-adapter-hyperfleet-adapter -n hyperfleet
-```
-
-**Expected Result:**
-- Adapter deployment updated
-- New adapter pod starts
-
-#### Step 2: Create a cluster to trigger event
-**Action:**
+- Submit a POST request to create a Cluster resource:
 ```bash
 curl -X POST ${API_URL}/api/hyperfleet/v1/clusters \
   -H "Content-Type: application/json" \
-  -d '{
-    "kind": "Cluster",
-    "name": "crash-test",
-    "spec": {"platform": {"type": "gcp", "gcp": {"projectID": "test", "region": "us-central1"}}}
-  }'
+  -d @testdata/payloads/clusters/cluster-request.json
 ```
 
 **Expected Result:**
 - API returns successful response with cluster ID
-- Sentinel publishes event to broker
 
-#### Step 3: Verify adapter crashes on event receipt
+**Note:** After the cluster is created, Sentinel will detect the new cluster during its polling cycle and publish an event to the broker, which triggers the crash-adapter to receive and process the event.
+
+#### Step 2: Verify crash-adapter crashes on event receipt
 **Action:**
-- Monitor adapter pod status:
+- Monitor crash-adapter pod status:
 ```bash
-kubectl get pods -n hyperfleet -l app.kubernetes.io/instance=example-adapter -w
+kubectl get pods -n hyperfleet -l app.kubernetes.io/instance=crash-adapter -w
 ```
 
 **Expected Result:**
-- Adapter pod crashes (CrashLoopBackOff or Error state)
-- Pod restarts automatically
+- crash-adapter pod crashes (CrashLoopBackOff or Error state)
 
-#### Step 4: Restore adapter to normal mode
+**Note:** The unacknowledged message will be redelivered by the broker, which is verified in Step 4.
+
+#### Step 3: Restore crash-adapter to normal mode
 **Action:**
-```bash
-kubectl set env deployment -n hyperfleet -l app.kubernetes.io/instance=example-adapter SIMULATE_RESULT=success
-kubectl rollout status deployment/example-adapter-hyperfleet-adapter -n hyperfleet
-```
+- Upgrade crash-adapter Helm release with `SIMULATE_RESULT=success`
 
 **Expected Result:**
-- Adapter deployment updated
-- New adapter pod starts and remains Running
+- crash-adapter pod starts and remains Running
 
-#### Step 5: Verify message redelivery and processing
+#### Step 4: Verify message redelivery and processing
 **Action:**
-- Wait for adapter to process redelivered message
+- Wait for crash-adapter to process redelivered message
 - Check cluster status:
 ```bash
-curl -s ${API_URL}/api/hyperfleet/v1/clusters/${CLUSTER_ID}/statuses | jq '.'
+curl -s ${API_URL}/api/hyperfleet/v1/clusters/{cluster_id}/statuses | jq '.'
 ```
 
 **Expected Result:**
-- Adapter eventually processes the cluster event
-- Status is reported (may show Applied=True, Available progressing)
+- crash-adapter eventually processes the cluster event via redelivered message
+- Status is reported with appropriate conditions
 - No event is lost
+
+#### Step 5: Cleanup resources
+**Action:**
+- Delete the namespace created for this cluster:
+```bash
+kubectl delete namespace {cluster_id}
+```
+- Uninstall the crash-adapter Helm release
+
+**Expected Result:**
+- Namespace and all associated resources are deleted successfully
+- crash-adapter deployment is removed
+
+**Note:** This is a workaround cleanup method. Once CLM supports DELETE operations for "clusters" resource type, the namespace deletion should be replaced with:
+```bash
+curl -X DELETE ${API_URL}/api/hyperfleet/v1/clusters/{cluster_id}
+```
 
 ---
 
 ### Notes
 
-- Message redelivery behavior depends on Google Pub/Sub configuration:
-  - Uses acknowledgment deadline and retry policy
-  - If adapter crashes before acknowledging message, Pub/Sub will redeliver after the acknowledgment deadline expires
+- Message redelivery behavior depends on the message broker configuration:
+  - For Google Pub/Sub: Uses acknowledgment deadline and retry policy
+  - If adapter crashes before acknowledging message, broker will redeliver after the acknowledgment deadline expires
 - Sentinel may also republish events during its polling cycle if generation > observed_generation
 
 ---
 
-## Test Title: API handles incomplete adapter status reports gracefully
+## Test Title: Adapter can process pending events after restart
+
+### Description
+
+This test validates that adapters can recover from restarts and continue processing pending events. Pending events should be eventually processed after the adapter restarts.
+
+---
+
+| **Field** | **Value** |
+|-----------|-----------|
+| **Pos/Neg** | Positive |
+| **Priority** | Tier2 |
+| **Status** | Draft |
+| **Automation** | Not Automated |
+| **Version** | MVP |
+| **Created** | 2026-02-11 |
+| **Updated** | 2026-03-04 |
+
+
+---
+
+### Preconditions
+1. HyperFleet system is deployed and running
+2. Adapter is running normally
+
+---
+
+### Test Steps
+
+#### Step 1: Create cluster and verify initial processing
+**Action:**
+- Submit a POST request to create a Cluster resource:
+```bash
+curl -X POST ${API_URL}/api/hyperfleet/v1/clusters \
+  -H "Content-Type: application/json" \
+  -d @testdata/payloads/clusters/cluster-request.json
+```
+- Wait for adapter to process and verify status:
+```bash
+curl -X GET ${API_URL}/api/hyperfleet/v1/clusters/{cluster_id}/statuses
+```
+
+**Expected Result:**
+- Cluster created and processed
+- Adapter status shows Available=True
+
+---
+
+#### Step 2: Restart adapter pod
+**Action:**
+- Delete an adapter pod to trigger restart:
+```bash
+kubectl delete pod -n hyperfleet -l app.kubernetes.io/instance=<adapter-release-name>
+```
+
+**Expected Result:**
+- Adapter pod is terminated
+- New adapter pod starts up automatically
+
+---
+
+#### Step 3: Create new cluster while adapter is restarting
+**Action:**
+- Create another cluster via API during adapter restart window:
+```bash
+curl -X POST ${API_URL}/api/hyperfleet/v1/clusters \
+  -H "Content-Type: application/json" \
+  -d @testdata/payloads/clusters/cluster-request.json
+```
+
+**Expected Result:**
+- Cluster created successfully (API is independent of adapter)
+
+---
+
+#### Step 4: Verify adapter processes pending events after restart
+**Action:**
+- Wait for adapter to fully restart
+- Check status of the new cluster:
+```bash
+curl -X GET ${API_URL}/api/hyperfleet/v1/clusters/{cluster_id}/statuses
+```
+
+**Expected Result:**
+- Both clusters have adapter statuses with Applied=True, Available=True
+
+#### Step 5: Cleanup resources
+**Action:**
+- Delete the namespaces created for both clusters:
+```bash
+kubectl delete namespace {cluster_id_1}
+kubectl delete namespace {cluster_id_2}
+```
+
+**Expected Result:**
+- Namespaces and all associated resources are deleted successfully
+
+**Note:** This is a workaround cleanup method. Once CLM supports DELETE operations for "clusters" resource type, the namespace deletion should be replaced with:
+```bash
+curl -X DELETE ${API_URL}/api/hyperfleet/v1/clusters/{cluster_id}
+```
+
+---
+
+## Test Title: Adapter can handle duplicate events for same cluster idempotently
+
+### Description
+
+This test validates that when multiple events are published for the same cluster (e.g., due to retries or rapid updates), the adapter handles them idempotently without creating duplicate resources.
+
+---
+
+| **Field** | **Value** |
+|-----------|-----------|
+| **Pos/Neg** | Positive |
+| **Priority** | Tier1 |
+| **Status** | Draft |
+| **Automation** | Not Automated |
+| **Version** | MVP |
+| **Created** | 2026-02-11 |
+| **Updated** | 2026-03-04 |
+
+
+---
+
+### Preconditions
+1. HyperFleet system is deployed and running
+2. Adapter uses discovery pattern to check existing resources
+
+---
+
+### Test Steps
+
+#### Step 1: Create cluster and wait for initial processing
+**Action:**
+- Submit a POST request to create a Cluster resource:
+```bash
+curl -X POST ${API_URL}/api/hyperfleet/v1/clusters \
+  -H "Content-Type: application/json" \
+  -d @testdata/payloads/clusters/cluster-request.json
+```
+- Wait for adapter to process and verify status:
+```bash
+curl -X GET ${API_URL}/api/hyperfleet/v1/clusters/{cluster_id}/statuses
+```
+
+**Expected Result:**
+- Cluster created
+- Adapter creates namespace and other resources
+- Status reported
+
+---
+
+#### Step 2: Trigger multiple events for same cluster
+**Action:**
+- Restart Sentinel to trigger re-polling:
+```bash
+kubectl delete pod -n hyperfleet -l app.kubernetes.io/name=sentinel
+```
+
+**Expected Result:**
+- Multiple events may be published for the same cluster
+
+---
+
+#### Step 3: Verify no duplicate resources created
+**Action:**
+```bash
+# Check namespace count (should be exactly 1)
+kubectl get namespace {cluster_id}
+
+# Check job count (should be 1 or managed correctly)
+kubectl get jobs -n {cluster_id}
+```
+
+**Expected Result:**
+- Only one namespace exists for the cluster
+- No duplicate jobs or resources
+
+---
+
+#### Step 4: Verify status is consistent
+**Action:**
+```bash
+curl -s ${API_URL}/api/hyperfleet/v1/clusters/{cluster_id}/statuses | jq '.items | length'
+```
+
+**Expected Result:**
+- Only one status entry per adapter
+- Status reflects latest state (not duplicated)
+
+#### Step 5: Cleanup resources
+**Action:**
+- Delete the namespace created for this cluster:
+```bash
+kubectl delete namespace {cluster_id}
+```
+
+**Expected Result:**
+- Namespace and all associated resources are deleted successfully
+
+**Note:** This is a workaround cleanup method. Once CLM supports DELETE operations for "clusters" resource type, the namespace deletion should be replaced with:
+```bash
+curl -X DELETE ${API_URL}/api/hyperfleet/v1/clusters/{cluster_id}
+```
+
+---
+
+## Test Title: API can handle incomplete adapter status reports gracefully
 
 ### Description
 
@@ -431,7 +525,7 @@ This test validates that the HyperFleet API can gracefully handle adapter status
 **Action:**
 - Send a status report with minimal fields (missing `reason`, `message`):
 ```bash
-curl -X POST ${API_URL}/api/hyperfleet/v1/clusters/${CLUSTER_ID}/statuses \
+curl -X POST ${API_URL}/api/hyperfleet/v1/clusters/{cluster_id}/statuses \
   -H "Content-Type: application/json" \
   -d '{
     "adapter": "test-incomplete-adapter",
@@ -453,7 +547,7 @@ curl -X POST ${API_URL}/api/hyperfleet/v1/clusters/${CLUSTER_ID}/statuses \
 **Action:**
 - Send a status report without `observed_generation`:
 ```bash
-curl -X POST ${API_URL}/api/hyperfleet/v1/clusters/${CLUSTER_ID}/statuses \
+curl -X POST ${API_URL}/api/hyperfleet/v1/clusters/{cluster_id}/statuses \
   -H "Content-Type: application/json" \
   -d '{
     "adapter": "test-no-generation-adapter",
@@ -477,7 +571,7 @@ curl -X POST ${API_URL}/api/hyperfleet/v1/clusters/${CLUSTER_ID}/statuses \
 **Action:**
 - Send a status report with an empty conditions list:
 ```bash
-curl -X POST ${API_URL}/api/hyperfleet/v1/clusters/${CLUSTER_ID}/statuses \
+curl -X POST ${API_URL}/api/hyperfleet/v1/clusters/{cluster_id}/statuses \
   -H "Content-Type: application/json" \
   -d '{
     "adapter": "test-empty-conditions-adapter",
@@ -493,8 +587,8 @@ curl -X POST ${API_URL}/api/hyperfleet/v1/clusters/${CLUSTER_ID}/statuses \
 **Action:**
 - Retrieve the cluster and its statuses:
 ```bash
-curl -s ${API_URL}/api/hyperfleet/v1/clusters/${CLUSTER_ID} | jq '.conditions'
-curl -s ${API_URL}/api/hyperfleet/v1/clusters/${CLUSTER_ID}/statuses | jq '.'
+curl -s ${API_URL}/api/hyperfleet/v1/clusters/{cluster_id} | jq '.conditions'
+curl -s ${API_URL}/api/hyperfleet/v1/clusters/{cluster_id}/statuses | jq '.'
 ```
 
 **Expected Result:**

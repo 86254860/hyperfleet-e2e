@@ -2,12 +2,27 @@
 
 ## Table of Contents
 
-1. [Clusters Resource Type - Workflow Validation](#test-title-clusters-resource-type---workflow-validation)
-2. [Clusters Resource Type - K8s Resources Check Aligned with Preinstalled Clusters Related Adapters Specified](#test-title-clusters-resource-type---k8s-resources-check-aligned-with-preinstalled-clusters-related-adapters-specified)
-3. [Clusters Resource Type - Adapter Dependency Relationships Workflow Validation for Preinstalled Clusters Related Dependent Adapters](#test-title-clusters-resource-type---adapter-dependency-relationships-workflow-validation-for-preinstalled-clusters-related-dependent-adapters)
+1. [Cluster can complete end-to-end workflow with all required adapters](#test-title-cluster-can-complete-end-to-end-workflow-with-all-required-adapters)
+2. [Cluster adapters can create K8s resources with correct state and metadata](#test-title-cluster-adapters-can-create-k8s-resources-with-correct-state-and-metadata)
+3. [Cluster adapters can enforce dependency order during workflow](#test-title-cluster-adapters-can-enforce-dependency-order-during-workflow)
+4. [Cluster can reflect adapter failure in top-level status](#test-title-cluster-can-reflect-adapter-failure-in-top-level-status)
+5. [API can reject cluster with invalid name format (RFC 1123)](#test-title-api-can-reject-cluster-with-invalid-name-format-rfc-1123)
+6. [API can reject cluster with name exceeding max length](#test-title-api-can-reject-cluster-with-name-exceeding-max-length)
+
 ---
 
-## Test Title: Clusters Resource Type - Basic Workflow Validation
+## Test Variables
+
+```bash
+# Required adapters from configs/config.yaml under adapters.cluster
+export ADAPTER_NAMESPACE='cl-namespace'
+export ADAPTER_JOB='cl-job'
+export ADAPTER_DEPLOYMENT='cl-deployment'
+```
+
+---
+
+## Test Title: Cluster can complete end-to-end workflow with all required adapters
 
 ### Description
 
@@ -74,9 +89,9 @@ curl -X GET ${API_URL}/api/hyperfleet/v1/clusters/{cluster_id}/statuses
 **Expected Result:**
 - Response returns HTTP 200 (OK) status code
 - All required adapters from config are present in the response:
-  - `clusters-namespace`
-  - `clusters-job`
-  - `clusters-deployment`
+  - `${ADAPTER_NAMESPACE}`
+  - `${ADAPTER_JOB}`
+  - `${ADAPTER_DEPLOYMENT}`
 - Each required adapter has all required condition types: `Applied`, `Available`, `Health`
 - Each condition has `status: "True"` indicating successful execution
 - **Adapter condition metadata validation** (for each condition in adapter.conditions):
@@ -125,7 +140,7 @@ curl -X DELETE ${API_URL}/api/hyperfleet/v1/clusters/{cluster_id}
 
 ---
 
-## Test Title: Clusters Resource Type - K8s Resources Check Aligned with Preinstalled Clusters Related Adapters Specified
+## Test Title: Cluster adapters can create K8s resources with correct state and metadata
 
 ### Description
 
@@ -179,7 +194,7 @@ curl -X GET ${API_URL}/api/hyperfleet/v1/clusters/{cluster_id}/statuses
 ```
 
 **Expected Result:**
-- All required adapters from config (cl-namespace, cl-job, cl-deployment) are present
+- All required adapters from config (${ADAPTER_NAMESPACE}, ${ADAPTER_JOB}, ${ADAPTER_DEPLOYMENT}) are present
 - Each adapter has all three conditions (`Applied`, `Available`, `Health`) with `status: True`
 
 **Note:** Required adapters are configurable via `configs/config.yaml` under `adapters.cluster`
@@ -189,7 +204,7 @@ curl -X GET ${API_URL}/api/hyperfleet/v1/clusters/{cluster_id}/statuses
 **Action:**
 - For each required adapter, retrieve and validate corresponding Kubernetes resources:
 
-**For cl-namespace adapter:**
+**For ${ADAPTER_NAMESPACE} adapter:**
 ```bash
 kubectl get namespace {cluster_id} -o yaml
 ```
@@ -200,7 +215,7 @@ kubectl get namespace {cluster_id} -o yaml
 - Required annotations:
   - `hyperfleet.io/generation`: Equals "1" for new creation request
 
-**For cl-job adapter:**
+**For ${ADAPTER_JOB} adapter:**
 ```bash
 kubectl get job -n {cluster_id} -l hyperfleet.io/cluster-id={cluster_id},hyperfleet.io/resource-type=job -o yaml
 ```
@@ -211,7 +226,7 @@ kubectl get job -n {cluster_id} -l hyperfleet.io/cluster-id={cluster_id},hyperfl
 - Required annotations:
   - `hyperfleet.io/generation`: Equals "1" for new creation request
 
-**For cl-deployment adapter:**
+**For ${ADAPTER_DEPLOYMENT} adapter:**
 ```bash
 kubectl get deployment -n {cluster_id} -l hyperfleet.io/cluster-id={cluster_id},hyperfleet.io/resource-type=deployment -o yaml
 ```
@@ -240,11 +255,11 @@ curl -X DELETE ${API_URL}/api/hyperfleet/v1/clusters/{cluster_id}
 
 ---
 
-## Test Title: Clusters Resource Type - Adapter Dependency Relationships Workflow Validation
+## Test Title: Cluster adapters can enforce dependency order during workflow
 
 ### Description
 
-This test validates that CLM correctly handles adapter dependency relationships when processing a clusters resource request. Specifically, it verifies the dependency relationship where the cl-deployment adapter depends on the cl-job adapter completion. The test continuously polls and validates throughout the workflow period to ensure: (1) cl-deployment's Applied condition remains False until cl-job's Available condition reaches True, enforcing the dependency precondition; (2) during cl-job execution, cl-deployment's Available condition stays Unknown (never False), confirming the adapter waits correctly without attempting execution; (3) successful completion with cl-deployment's Available eventually transitioning to True. This validation demonstrates that the workflow engine properly enforces adapter dependencies and ensures dependent adapters wait for prerequisites before executing.
+This test validates that CLM correctly handles adapter dependency relationships when processing a clusters resource request. Specifically, it verifies the dependency relationship where the ${ADAPTER_DEPLOYMENT} adapter depends on the ${ADAPTER_JOB} adapter completion. The test continuously polls and validates throughout the workflow period to ensure: (1) ${ADAPTER_DEPLOYMENT}'s Applied condition remains False until ${ADAPTER_JOB}'s Available condition reaches True, enforcing the dependency precondition; (2) during ${ADAPTER_JOB} execution, ${ADAPTER_DEPLOYMENT}'s Available condition stays Unknown (never False), confirming the adapter waits correctly without attempting execution; (3) successful completion with ${ADAPTER_DEPLOYMENT}'s Available eventually transitioning to True. This validation demonstrates that the workflow engine properly enforces adapter dependencies and ensures dependent adapters wait for prerequisites before executing.
 
 ---
 
@@ -283,45 +298,45 @@ curl -X POST ${API_URL}/api/hyperfleet/v1/clusters \
 **Expected Result:**
 - API returns successful response
 
-#### Step 2: Verify cl-deployment initial state and dependency waiting behavior
+#### Step 2: Verify ${ADAPTER_DEPLOYMENT} initial state and dependency waiting behavior
 
 **Action:**
-- Poll adapter statuses to capture cl-deployment's initial waiting state:
+- Poll adapter statuses to capture ${ADAPTER_DEPLOYMENT}'s initial waiting state:
 ```bash
 curl -X GET ${API_URL}/api/hyperfleet/v1/clusters/{cluster_id}/statuses
 ```
 
 **Expected Result:**
-At the initial state (when cl-deployment first appears in statuses):
+At the initial state (when ${ADAPTER_DEPLOYMENT} first appears in statuses):
 - Response returns HTTP 200 (OK) status code
-- The `cl-deployment` adapter is present with initial waiting state:
-  - `Applied` condition has `status: "False"` (deployment hasn't been applied yet, waiting for cl-job dependency)
+- The `${ADAPTER_DEPLOYMENT}` adapter is present with initial waiting state:
+  - `Applied` condition has `status: "False"` (deployment hasn't been applied yet, waiting for ${ADAPTER_JOB} dependency)
   - `Available` condition has `status: "Unknown"` (deployment hasn't been applied yet)
   - `Health` condition has `status: "True"` (adapter itself is healthy, just waiting)
 
 #### Step 3: Verify dependency relationship and condition transitions throughout entire workflow
 
 **Action:**
-- Continuously poll adapter statuses from the initial state until cl-deployment completes:
+- Continuously poll adapter statuses from the initial state until ${ADAPTER_DEPLOYMENT} completes:
 ```bash
 curl -X GET ${API_URL}/api/hyperfleet/v1/clusters/{cluster_id}/statuses
 ```
 
 **Expected Result:**
-Throughout the entire period (from initial state until cl-deployment completes), validate the following on each poll:
+Throughout the entire period (from initial state until ${ADAPTER_DEPLOYMENT} completes), validate the following on each poll:
 
-**Validation 1 - Dependency enforcement (during cl-job execution):**
-- While `cl-job` adapter's `Available` condition has NOT reached `status: "True"`:
-  - The `cl-deployment` adapter's `Applied` condition must remain `status: "False"`
-  - The `cl-deployment` adapter's `Available` condition must remain `status: "Unknown"` (never `status: "False"`)
-  - This validates that cl-deployment waits for cl-job to complete without attempting to apply resources
+**Validation 1 - Dependency enforcement (during ${ADAPTER_JOB} execution):**
+- While `${ADAPTER_JOB}` adapter's `Available` condition has NOT reached `status: "True"`:
+  - The `${ADAPTER_DEPLOYMENT}` adapter's `Applied` condition must remain `status: "False"`
+  - The `${ADAPTER_DEPLOYMENT}` adapter's `Available` condition must remain `status: "Unknown"` (never `status: "False"`)
+  - This validates that ${ADAPTER_DEPLOYMENT} waits for ${ADAPTER_JOB} to complete without attempting to apply resources
 
 **Validation 2 - Success condition:**
-- Once `cl-job` adapter's `Available` reaches `status: "True"`, cl-deployment can proceed with execution
-- Once `cl-deployment` completes execution, its `Available` condition eventually becomes `status: "True"`
+- Once `${ADAPTER_JOB}` adapter's `Available` reaches `status: "True"`, ${ADAPTER_DEPLOYMENT} can proceed with execution
+- Once `${ADAPTER_DEPLOYMENT}` completes execution, its `Available` condition eventually becomes `status: "True"`
 - This confirms the complete dependency workflow succeeded
 
-**Note:** After cl-job completes, cl-deployment's `Available` condition may temporarily be `False` (e.g., `MinimumReplicasUnavailable` during deployment startup) before becoming `True`, which is expected behavior and not validated.
+**Note:** After ${ADAPTER_JOB} completes, ${ADAPTER_DEPLOYMENT}'s `Available` condition may temporarily be `False` (e.g., `MinimumReplicasUnavailable` during deployment startup) before becoming `True`, which is expected behavior and not validated.
 
 #### Step 4: Cleanup resources
 
@@ -338,3 +353,194 @@ kubectl delete namespace {cluster_id}
 ```bash
 curl -X DELETE ${API_URL}/api/hyperfleet/v1/clusters/{cluster_id}
 ```
+
+---
+
+## Test Title: Cluster can reflect adapter failure in top-level status
+
+### Description
+
+This test validates that the end-to-end workflow correctly handles adapter failure scenarios. When an adapter reports a failure status (e.g., `Health=False`), the cluster's top-level conditions (`Ready`, `Available`) should remain `False`, accurately reflecting that the cluster has not reached a healthy state.
+
+---
+
+| **Field** | **Value** |
+|-----------|-----------|
+| **Pos/Neg** | Negative |
+| **Priority** | Tier1 |
+| **Status** | Draft |
+| **Automation** | Not Automated |
+| **Version** | MVP |
+| **Created** | 2026-02-11 |
+| **Updated** | 2026-03-04 |
+
+
+---
+
+### Preconditions
+
+1. Environment is prepared using [hyperfleet-infra](https://github.com/openshift-hyperfleet/hyperfleet-infra) with all required platform resources
+2. HyperFleet API and HyperFleet Sentinel services are deployed and running successfully
+3. A dedicated failure-adapter is deployed via Helm with pre-configured failure behavior (e.g., `SIMULATE_RESULT=failure`), separate from the normal adapters used in other tests
+
+---
+
+### Test Steps
+
+#### Step 1: Submit an API request to create a Cluster resource
+
+**Action:**
+- Submit a POST request to create a Cluster resource:
+```bash
+curl -X POST ${API_URL}/api/hyperfleet/v1/clusters \
+  -H "Content-Type: application/json" \
+  -d @testdata/payloads/clusters/cluster-request.json
+```
+
+**Expected Result:**
+- API returns successful response with cluster ID
+
+#### Step 2: Verify adapter failure is reported via status API
+
+**Action:**
+- Poll adapter statuses until the failure-adapter reports its status:
+```bash
+curl -X GET ${API_URL}/api/hyperfleet/v1/clusters/{cluster_id}/statuses
+```
+
+**Expected Result:**
+- The failure-adapter is present in the statuses response
+- The failure-adapter reports `Health` condition with `status: "False"`, with reason and message indicating the failure
+- The failure-adapter reports `Available` condition with `status: "False"`
+
+#### Step 3: Verify cluster top-level status reflects adapter failure
+
+**Action:**
+- Retrieve cluster status:
+```bash
+curl -X GET ${API_URL}/api/hyperfleet/v1/clusters/{cluster_id}
+```
+
+**Expected Result:**
+- Cluster `Ready` condition remains `status: "False"`
+- Cluster `Available` condition remains `status: "False"`
+- Cluster does not transition to Ready state while any adapter reports failure
+
+#### Step 4: Cleanup resources
+
+**Action:**
+- Delete the namespace created for this cluster:
+```bash
+kubectl delete namespace {cluster_id}
+```
+- Uninstall the failure-adapter Helm release
+
+**Expected Result:**
+- Namespace and all associated resources are deleted successfully
+- Failure-adapter deployment is removed
+
+**Note:** This is a workaround cleanup method. Once CLM supports DELETE operations for "clusters" resource type, the namespace deletion should be replaced with:
+```bash
+curl -X DELETE ${API_URL}/api/hyperfleet/v1/clusters/{cluster_id}
+```
+
+---
+
+## Test Title: API can reject cluster with invalid name format (RFC 1123)
+
+### Description
+
+This test validates that the HyperFleet API correctly rejects cluster creation requests with invalid name formats that don't comply with RFC 1123 DNS label naming conventions.
+
+---
+
+| **Field** | **Value** |
+|-----------|-----------|
+| **Pos/Neg** | Negative |
+| **Priority** | Tier1 |
+| **Status** | Draft |
+| **Automation** | Not Automated |
+| **Version** | MVP |
+| **Created** | 2026-02-11 |
+| **Updated** | 2026-02-11 |
+
+---
+
+### Preconditions
+1. HyperFleet API is deployed and running successfully
+2. API is accessible via port-forward or ingress
+
+---
+
+### Test Steps
+
+#### Step 1: Send POST request with invalid name format
+**Action:**
+```bash
+curl -X POST ${API_URL}/api/hyperfleet/v1/clusters \
+  -H "Content-Type: application/json" \
+  -d '{
+    "kind": "Cluster",
+    "name": "Invalid_Name_With_Underscore",
+    "spec": {"platform": {"type": "gcp", "gcp": {"projectID": "test", "region": "us-central1"}}}
+  }'
+```
+
+**Expected Result:**
+- API returns HTTP 400 Bad Request
+- Response contains validation error:
+```json
+{
+  "code": "HYPERFLEET-VAL-000",
+  "detail": "name must match pattern ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$",
+  "status": 400,
+  "title": "Validation Failed"
+}
+```
+
+---
+
+## Test Title: API can reject cluster with name exceeding max length
+
+### Description
+
+This test validates that the HyperFleet API correctly rejects cluster creation requests with names exceeding the maximum allowed length.
+
+---
+
+| **Field** | **Value** |
+|-----------|-----------|
+| **Pos/Neg** | Negative |
+| **Priority** | Tier2 |
+| **Status** | Draft |
+| **Automation** | Not Automated |
+| **Version** | MVP |
+| **Created** | 2026-02-11 |
+| **Updated** | 2026-02-11 |
+
+---
+
+### Preconditions
+1. HyperFleet API is deployed and running successfully
+
+---
+
+### Test Steps
+
+#### Step 1: Send POST request with name exceeding max length
+**Action:**
+```bash
+curl -X POST ${API_URL}/api/hyperfleet/v1/clusters \
+  -H "Content-Type: application/json" \
+  -d '{
+    "kind": "Cluster",
+    "name": "this-is-a-very-long-cluster-name-that-exceeds-the-maximum-allowed-length-for-cluster-names",
+    "spec": {"platform": {"type": "gcp", "gcp": {"projectID": "test", "region": "us-central1"}}}
+  }'
+```
+
+**Expected Result:**
+- API returns HTTP 400 Bad Request
+- Response contains validation error about name length
+
+---
