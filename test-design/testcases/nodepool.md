@@ -102,24 +102,37 @@ curl -X GET ${API_URL}/api/hyperfleet/v1/clusters/{cluster_id}/nodepools/{nodepo
 - NodePool `Ready` condition transitions from `status: False` to `status: True`
 - Final nodepool conditions have `status: True` for both condition `{"type": "Ready"}` and `{"type": "Available"}`
 - Validate that the observedGeneration for the Ready and Available conditions is 1 for a new creation request
-- Validate adapter-specific conditions in nodepool status:
+- Validate adapter-specific conditions in nodepool status (Note: This check will be removed once these adapter-specific conditions are removed in the future):
   - Each required adapter should report its own condition type (e.g., `NpConfigmapSuccessful`) with `status: True`
 - This confirms the nodepool has reached the desired end state
 
-#### Step 4: Cleanup resources (AfterEach)
+#### Step 4: Cleanup Resources (AfterEach)
 
 **Action:**
-- Delete the namespace created for this cluster:
+- Wait for cluster Ready condition with timeout to prevent namespace deletion conflicts:
+  - Poll the cluster status via API until Ready=True
+  - If timeout occurs, log a warning and continue with best-effort cleanup
+- Delete the cluster namespace (cascades to delete nodepool resources):
 ```bash
+# Wait for cluster Ready with timeout (best-effort, pseudo-code)
+# Poll: curl -X GET ${API_URL}/api/hyperfleet/v1/clusters/{cluster_id} until condition type=Ready, status=True
+# If timeout: log "WARN:  The cluster did not reach Ready state before cleanup"
+
+# Delete namespace regardless of Ready state
 kubectl delete namespace {cluster_id}
 ```
 
 **Expected Result:**
-- Namespace and all associated resources (including nodepools) are deleted successfully
+- Namespace deletion is attempted regardless of Ready state, with a warning logged if cluster is not Ready
+- Namespace and all associated resources (including nodepools) are deleted (best-effort)
+- Cleanup never hangs indefinitely
 
-**Note:** This is a workaround cleanup method. Once CLM supports DELETE operations for "nodepools" resource type, this step should be replaced with:
+**Note:** This is a workaround cleanup method. Once HyperFleet API supports DELETE operations for "nodepools" and "clusters" resource type, this step should be replaced with:
 ```bash
+# Delete nodepool
 curl -X DELETE ${API_URL}/api/hyperfleet/v1/clusters/{cluster_id}/nodepools/{nodepool_id}
+# Delete cluster
+curl -X DELETE ${API_URL}/api/hyperfleet/v1/clusters/{cluster_id}
 ```
 
 ---
@@ -211,21 +224,20 @@ curl -X GET ${API_URL}/api/hyperfleet/v1/clusters/{cluster_id}/nodepools/{nodepo
 
 **Action:**
 - Wait for cluster Ready condition with timeout to prevent namespace deletion conflicts:
-  - Use the configured cluster ready timeout (5m, as defined in configs/config.yaml)
-  - If timeout is reached, log a warning and proceed with best-effort cleanup
+  - Poll the cluster status via API until Ready=True
+  - If timeout occurs, log a warning and continue with best-effort cleanup
 - Delete the cluster namespace (cascades to delete nodepool resources):
 ```bash
-# Wait for cluster Ready with timeout (best-effort)
-kubectl wait --for=condition=Ready --timeout=5m cluster/{cluster_id} || \
-  echo "WARN: cluster did not become Ready within timeout; proceeding with cleanup"
+# Wait for cluster Ready with timeout (best-effort, pseudo-code)
+# Poll: curl -X GET ${API_URL}/api/hyperfleet/v1/clusters/{cluster_id} until condition type=Ready, status=True
+# If timeout: log "WARN:  The cluster did not reach Ready state before cleanup"
 
 # Delete namespace regardless of Ready state
 kubectl delete namespace {cluster_id}
 ```
 
 **Expected Result:**
-- If cluster reaches Ready state within 5m, namespace deletion proceeds normally
-- If cluster doesn't reach Ready state, a warning is logged and namespace deletion is attempted anyway
+- Namespace deletion is attempted regardless of Ready state, with a warning logged if cluster is not Ready
 - Namespace and all associated resources (ConfigMap) are deleted (best-effort)
 - Cleanup never hangs indefinitely
 

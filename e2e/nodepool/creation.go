@@ -179,6 +179,7 @@ var _ = ginkgo.Describe("[Suite: nodepool][baseline] NodePool Resource Type Life
 
 					// Validate adapter-specific conditions in nodepool status
 					// Each required adapter should report its own condition type (e.g., NpConfigmapSuccessful)
+					// Note: This check will be removed once these adapter-specific conditions are removed in the future
 					for _, adapterName := range h.Cfg.Adapters.NodePool {
 						expectedCondType := h.AdapterNameToConditionType(adapterName)
 						hasAdapterCondition := h.HasResourceCondition(
@@ -233,6 +234,20 @@ var _ = ginkgo.Describe("[Suite: nodepool][baseline] NodePool Resource Type Life
 							"Kubernetes resource for adapter %s should be created and reach desired state", adapterName)
 						ginkgo.GinkgoWriter.Printf("Successfully verified K8s resource for adapter: %s\n", adapterName)
 					}
+
+					ginkgo.By("Verify Final NodePool State")
+					// Wait for nodepool Ready condition and verify both Ready and Available conditions are True
+					// This confirms the nodepool workflow completed successfully and all K8s resources were created
+					// Without this, adapters may still be creating resources during cleanup
+					err := h.WaitForNodePoolCondition(
+						ctx,
+						clusterID,
+						nodepoolID,
+						client.ConditionTypeReady,
+						openapi.ResourceConditionStatusTrue,
+						h.Cfg.Timeouts.NodePool.Ready,
+					)
+					Expect(err).NotTo(HaveOccurred(), "nodepool Ready condition should transition to True")
 				})
 		})
 
