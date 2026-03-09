@@ -17,7 +17,7 @@ testdata/
 
 | File                   | Purpose | Use Case |
 |------------------------|---------|----------|
-| `cluster-request.json` | Standard GCP cluster | General testing, cluster lifecycle |
+| `cluster-request.json` | Standard cluster | General testing, cluster lifecycle |
 
 ## NodePool Payloads
 
@@ -46,7 +46,7 @@ Payloads support Go template syntax for dynamic values. For example:
 ```json
 {
   "kind": "Cluster",
-  "name": "hp-gcp-cluster-{{.Random}}",
+  "name": "hp-cluster-{{.Random}}",
   "labels": {
     "created-at": "{{.Timestamp}}"
   }
@@ -57,9 +57,9 @@ Template variables (e.g., `{{.Random}}`, `{{.UUID}}`, `{{.Timestamp}}`) are auto
 
 ## Payload Naming Conventions
 
-- **Platform prefix**: `gcp`, `aws`, `azure`
-- **Optional variant suffix**: `_variant` for specialized payloads (e.g., `_gpu`, `_minimal`)
-- **Lowercase with underscores**: `cluster-request.json`, `cluster-request-gpu.json` (future), not `CLUSTER-REQUEST.json`
+- **Resource type prefix**: `cluster-request`, `nodepool-request`
+- **Optional variant suffix**: `-variant` for specialized payloads (e.g., `-gpu`, `-minimal`)
+- **Lowercase with hyphens**: `cluster-request.json`, `cluster-request-gpu.json` (future), not `CLUSTER-REQUEST.json`
 
 ## Adding New Payloads
 
