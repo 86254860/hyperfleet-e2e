@@ -259,7 +259,7 @@ curl -X DELETE ${API_URL}/api/hyperfleet/v1/clusters/{cluster_id}
 
 ### Description
 
-This test validates that CLM correctly handles adapter dependency relationships when processing a clusters resource request. Specifically, it verifies the dependency relationship where the ${ADAPTER_DEPLOYMENT} adapter depends on the ${ADAPTER_JOB} adapter completion. The test continuously polls and validates throughout the workflow period to ensure: (1) ${ADAPTER_DEPLOYMENT}'s Applied condition remains False until ${ADAPTER_JOB}'s Available condition reaches True, enforcing the dependency precondition; (2) during ${ADAPTER_JOB} execution, ${ADAPTER_DEPLOYMENT}'s Available condition stays Unknown (never False), confirming the adapter waits correctly without attempting execution; (3) successful completion with ${ADAPTER_DEPLOYMENT}'s Available eventually transitioning to True. This validation demonstrates that the workflow engine properly enforces adapter dependencies and ensures dependent adapters wait for prerequisites before executing.
+This test validates that CLM correctly handles adapter dependency relationships when processing a clusters resource request. Specifically, it verifies the dependency relationship where the deployment adapter (${ADAPTER_DEPLOYMENT}) depends on the job adapter (${ADAPTER_JOB}) completion. The test continuously polls and validates throughout the workflow period to ensure: (1) ${ADAPTER_DEPLOYMENT}'s Applied condition remains False until ${ADAPTER_JOB}'s Available condition reaches True, enforcing the dependency precondition; (2) during ${ADAPTER_JOB} execution, ${ADAPTER_DEPLOYMENT}'s Available condition stays Unknown (never False), confirming the adapter waits correctly without attempting execution; (3) successful completion with ${ADAPTER_DEPLOYMENT}'s Available eventually transitioning to True. This validation demonstrates that the workflow engine properly enforces adapter dependencies and ensures dependent adapters wait for prerequisites before executing.
 
 ---
 
@@ -491,10 +491,11 @@ curl -X POST ${API_URL}/api/hyperfleet/v1/clusters \
 - Response contains validation error:
 ```json
 {
+  "type": "https://api.hyperfleet.io/errors/validation-error",
   "code": "HYPERFLEET-VAL-000",
-  "detail": "name must match pattern ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$",
+  "title": "Validation Failed",
   "status": 400,
-  "title": "Validation Failed"
+  "detail": "name must start and end with lowercase letter or number, and contain only lowercase letters, numbers, and hyphens"
 }
 ```
 
@@ -541,6 +542,15 @@ curl -X POST ${API_URL}/api/hyperfleet/v1/clusters \
 
 **Expected Result:**
 - API returns HTTP 400 Bad Request
-- Response contains validation error about name length
+- Response contains validation error:
+```json
+{
+  "type": "https://api.hyperfleet.io/errors/validation-error",
+  "code": "HYPERFLEET-VAL-000",
+  "title": "Validation Failed",
+  "status": 400,
+  "detail": "name must be at most 53 characters"
+}
+```
 
 ---

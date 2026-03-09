@@ -36,13 +36,19 @@ This test validates that the adapter framework correctly detects and reports fai
 ### Preconditions
 1. Environment is prepared using [hyperfleet-infra](https://github.com/openshift-hyperfleet/hyperfleet-infra) with all required platform resources
 2. HyperFleet API and HyperFleet Sentinel services are deployed and running successfully
-3. A dedicated test adapter is deployed via Helm with AdapterConfig containing invalid K8s resource objects
 
 ---
 
 ### Test Steps
 
-#### Step 1: Send POST request to create a new cluster
+#### Step 1: Deploy dedicated test adapter with invalid K8s resource configuration
+**Action:**
+- Deploy a test adapter via Helm with AdapterConfig containing invalid K8s resource objects
+
+**Expected Result:**
+- Test adapter is deployed and running successfully
+
+#### Step 2: Send POST request to create a new cluster
 **Action:**
 - Execute cluster creation request:
 ```bash
@@ -54,7 +60,7 @@ curl -X POST ${API_URL}/api/hyperfleet/v1/clusters \
 **Expected Result:**
 - API returns successful response
 
-#### Step 2: Verify adapter status reports failure
+#### Step 3: Verify adapter status reports failure
 **Action:**
 - Poll adapter statuses:
 ```bash
@@ -64,7 +70,7 @@ curl -X GET ${API_URL}/api/hyperfleet/v1/clusters/{cluster_id}/statuses
 **Expected Result:**
 - The test adapter reports `Available` condition with `status: "False"`, with reason indicating invalid K8s resource
 
-#### Step 3: Cleanup resources
+#### Step 4: Cleanup resources
 
 **Action:**
 - Delete the namespace created for this cluster:
@@ -108,7 +114,14 @@ This test validates that the adapter framework correctly detects and handles res
 ### Preconditions
 1. Environment is prepared using [hyperfleet-infra](https://github.com/openshift-hyperfleet/hyperfleet-infra) with all required platform resources
 2. HyperFleet API and HyperFleet Sentinel services are deployed and running successfully
-3. A dedicated timeout-adapter is deployed via Helm with AdapterConfig containing preconditions that cannot be met, for example:
+
+---
+
+### Test Steps
+
+#### Step 1: Deploy dedicated timeout-adapter with unsatisfiable preconditions
+**Action:**
+- Deploy a timeout-adapter via Helm with AdapterConfig containing preconditions that cannot be met, for example:
 ```yaml
 preconditions:
   - name: "clusterStatus"
@@ -131,11 +144,10 @@ preconditions:
         values: ["NotReady", "Ready"]
 ```
 
----
+**Expected Result:**
+- timeout-adapter is deployed and running successfully
 
-### Test Steps
-
-#### Step 1: Send POST request to create a new cluster
+#### Step 2: Send POST request to create a new cluster
 **Action:**
 - Execute cluster creation request:
 ```bash
@@ -147,7 +159,7 @@ curl -X POST ${API_URL}/api/hyperfleet/v1/clusters \
 **Expected Result:**
 - API returns successful response
 
-#### Step 2: Verify adapter status reports timeout
+#### Step 3: Verify adapter status reports timeout
 **Action:**
 - Poll adapter statuses:
 ```bash
@@ -157,7 +169,7 @@ curl -X GET ${API_URL}/api/hyperfleet/v1/clusters/{cluster_id}/statuses
 **Expected Result:**
 - The timeout-adapter reports `Available` condition with `status: "False"`, with reason indicating timeout (e.g., `"reason": "JobTimeout"`)
 
-#### Step 3: Cleanup resources
+#### Step 4: Cleanup resources
 
 **Action:**
 - Delete the namespace created for this cluster:
@@ -202,14 +214,20 @@ This test validates that when an adapter crashes during event processing, the sy
 ### Preconditions
 1. Environment is prepared using [hyperfleet-infra](https://github.com/openshift-hyperfleet/hyperfleet-infra)
 2. HyperFleet API, Sentinel, and Adapter services are deployed
-3. A dedicated crash-adapter is deployed via Helm with pre-configured crash behavior (`SIMULATE_RESULT=crash`), separate from the normal adapters used in other tests
-4. Message broker is configured with appropriate acknowledgment deadline and retry policy
+3. Message broker is configured with appropriate acknowledgment deadline and retry policy
 
 ---
 
 ### Test Steps
 
-#### Step 1: Create a cluster to trigger event
+#### Step 1: Deploy dedicated crash-adapter with pre-configured crash behavior
+**Action:**
+- Deploy a crash-adapter via Helm with `SIMULATE_RESULT=crash`, separate from the normal adapters used in other tests
+
+**Expected Result:**
+- crash-adapter is deployed and running successfully
+
+#### Step 2: Create a cluster to trigger event
 **Action:**
 - Submit a POST request to create a Cluster resource:
 ```bash
@@ -223,39 +241,45 @@ curl -X POST ${API_URL}/api/hyperfleet/v1/clusters \
 
 **Note:** After the cluster is created, Sentinel will detect the new cluster during its polling cycle and publish an event to the broker, which triggers the crash-adapter to receive and process the event.
 
-#### Step 2: Verify crash-adapter crashes on event receipt
+#### Step 3: Verify crash-adapter crashes on event receipt
 **Action:**
-- Monitor crash-adapter pod status:
+- Check cluster adapter statuses via API:
 ```bash
-kubectl get pods -n hyperfleet -l app.kubernetes.io/instance=crash-adapter -w
+curl -s ${API_URL}/api/hyperfleet/v1/clusters/{cluster_id}/statuses | jq '.items[].adapter'
+```
+- Check crash-adapter pod status (for manual verification):
+```bash
+kubectl get pods -n hyperfleet -l app.kubernetes.io/instance=crash-adapter --no-headers
 ```
 
 **Expected Result:**
-- crash-adapter pod crashes (CrashLoopBackOff or Error state)
+- API: statuses response does not contain an entry for `crash-adapter` (it crashed before reporting status)
+- kubectl: crash-adapter pod shows CrashLoopBackOff or Error state
 
-**Note:** The unacknowledged message will be redelivered by the broker, which is verified in Step 4.
+**Note:** The unacknowledged message will be redelivered by the broker, which is verified in Step 5.
 
-#### Step 3: Restore crash-adapter to normal mode
+#### Step 4: Restore crash-adapter to normal mode
 **Action:**
 - Upgrade crash-adapter Helm release with `SIMULATE_RESULT=success`
 
 **Expected Result:**
 - crash-adapter pod starts and remains Running
 
-#### Step 4: Verify message redelivery and processing
+#### Step 5: Verify message redelivery and processing
 **Action:**
 - Wait for crash-adapter to process redelivered message
-- Check cluster status:
+- Check crash-adapter status via API:
 ```bash
-curl -s ${API_URL}/api/hyperfleet/v1/clusters/{cluster_id}/statuses | jq '.'
+curl -s ${API_URL}/api/hyperfleet/v1/clusters/{cluster_id}/statuses \
+  | jq '.items[] | select(.adapter == "crash-adapter")'
 ```
 
 **Expected Result:**
-- crash-adapter eventually processes the cluster event via redelivered message
-- Status is reported with appropriate conditions
-- No event is lost
+- crash-adapter status entry is now present in the statuses response (confirming the redelivered message was processed)
+- crash-adapter reports all three condition types with `status: "True"`: `Applied`, `Available`, `Health`
+- `observed_generation` is set to `1`
 
-#### Step 5: Cleanup resources
+#### Step 6: Cleanup resources
 **Action:**
 - Delete the namespace created for this cluster:
 ```bash

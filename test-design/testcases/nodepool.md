@@ -243,9 +243,10 @@ curl -X POST ${API_URL}/api/hyperfleet/v1/clusters/{fake_cluster_id}/nodepools \
 ```json
 {
   "type": "https://api.hyperfleet.io/errors/not-found",
-  "title": "Not Found",
+  "code": "HYPERFLEET-NTF-001",
+  "title": "Resource Not Found",
   "status": 404,
-  "detail": "Cluster not found"
+  "detail": "Cluster with id='{fake_cluster_id}' not found"
 }
 ```
 
@@ -320,10 +321,11 @@ curl -X POST ${API_URL}/api/hyperfleet/v1/clusters/{cluster_id}/nodepools \
 - Response contains validation error:
 ```json
 {
+  "type": "https://api.hyperfleet.io/errors/validation-error",
   "code": "HYPERFLEET-VAL-000",
-  "detail": "name must be at most 15 characters",
+  "title": "Validation Failed",
   "status": 400,
-  "title": "Validation Failed"
+  "detail": "name must be at most 15 characters"
 }
 ```
 

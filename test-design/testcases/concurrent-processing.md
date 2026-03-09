@@ -142,7 +142,7 @@ This test validates that multiple nodepools can be created under the same cluste
 - Submit 3 POST requests to create NodePool resources (each call generates a unique name via `{{.Random}}` template):
 ```bash
 for i in 1 2 3; do
-  curl -X POST ${API_URL}/api/hyperfleet/v1/nodepools \
+  curl -X POST ${API_URL}/api/hyperfleet/v1/clusters/{cluster_id}/nodepools \
     -H "Content-Type: application/json" \
     -d @testdata/payloads/nodepools/gcp.json
 done
