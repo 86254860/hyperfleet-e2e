@@ -131,6 +131,38 @@ func (h *Helper) VerifyConfigMap(ctx context.Context, namespace string, expected
 	return nil
 }
 
+// GetNamespace retrieves a namespace by name.
+// Returns the Namespace object so you can check its labels, annotations, and status.
+func (h *Helper) GetNamespace(ctx context.Context, name string) (*corev1.Namespace, error) {
+	logger.Info("fetching namespace", "namespace", name)
+
+	ns, err := h.K8sClient.FetchNamespace(ctx, name)
+	if err != nil {
+		return nil, err
+	}
+
+	logger.Info("namespace fetched successfully",
+		"namespace", ns.Name,
+		"phase", ns.Status.Phase)
+	return ns, nil
+}
+
+// GetConfigMap retrieves a configmap by name from the specified namespace.
+// Returns the ConfigMap object so you can check its labels, annotations, and data.
+func (h *Helper) GetConfigMap(ctx context.Context, namespace, name string) (*corev1.ConfigMap, error) {
+	logger.Info("fetching configmap", "namespace", namespace, "name", name)
+
+	cm, err := h.K8sClient.FetchConfigMap(ctx, namespace, name)
+	if err != nil {
+		return nil, err
+	}
+
+	logger.Info("configmap fetched successfully",
+		"namespace", namespace,
+		"name", cm.Name)
+	return cm, nil
+}
+
 // verifyMapContains checks if actual map contains all expected key-value pairs
 func verifyMapContains(actual, expected map[string]string, mapType string) error {
     missing := make([]string, 0, len(expected))

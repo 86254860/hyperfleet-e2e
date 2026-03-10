@@ -7,15 +7,17 @@ import (
     "github.com/openshift-hyperfleet/hyperfleet-e2e/pkg/api/openapi"
     "github.com/openshift-hyperfleet/hyperfleet-e2e/pkg/client"
     k8sclient "github.com/openshift-hyperfleet/hyperfleet-e2e/pkg/client/kubernetes"
+    "github.com/openshift-hyperfleet/hyperfleet-e2e/pkg/client/maestro"
     "github.com/openshift-hyperfleet/hyperfleet-e2e/pkg/config"
     "github.com/openshift-hyperfleet/hyperfleet-e2e/pkg/logger"
 )
 
 // Helper provides utility functions for e2e tests
 type Helper struct {
-    Cfg       *config.Config
-    Client    *client.HyperFleetClient
-    K8sClient *k8sclient.Client
+    Cfg           *config.Config
+    Client        *client.HyperFleetClient
+    K8sClient     *k8sclient.Client
+    MaestroClient *maestro.Client
 }
 
 // GetTestCluster creates a new temporary test cluster
@@ -69,4 +71,13 @@ func (h *Helper) GetTestNodePool(ctx context.Context, clusterID, payloadPath str
 // CleanupTestNodePool cleans up test nodepool
 func (h *Helper) CleanupTestNodePool(ctx context.Context, clusterID, nodepoolID string) error {
     return h.Client.DeleteNodePool(ctx, clusterID, nodepoolID)
+}
+
+// GetMaestroClient returns the Maestro client, initializing it lazily on first access
+// This avoids the overhead of K8s service discovery for test suites that don't use Maestro
+func (h *Helper) GetMaestroClient() *maestro.Client {
+    if h.MaestroClient == nil {
+        h.MaestroClient = maestro.NewClient("")
+    }
+    return h.MaestroClient
 }
