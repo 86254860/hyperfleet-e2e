@@ -88,6 +88,18 @@ func (c *Client) FetchNamespace(ctx context.Context, name string) (*corev1.Names
 	return ns, nil
 }
 
+// FetchConfigMap gets a configmap by name in the specified namespace
+func (c *Client) FetchConfigMap(ctx context.Context, namespace, name string) (*corev1.ConfigMap, error) {
+	cm, err := c.CoreV1().ConfigMaps(namespace).Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil, fmt.Errorf("configmap %s not found in namespace %s", name, namespace)
+		}
+		return nil, fmt.Errorf("failed to get configmap %s in namespace %s: %w", name, namespace, err)
+	}
+	return cm, nil
+}
+
 // FetchJobsByLabels lists jobs matching label selector in namespace
 func (c *Client) FetchJobsByLabels(ctx context.Context, namespace string, labelMap map[string]string) ([]batchv1.Job, error) {
 	labelSelector := labels.SelectorFromSet(labelMap).String()

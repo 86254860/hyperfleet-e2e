@@ -67,5 +67,7 @@ func newHelper(cfg *config.Config) (*Helper, error) {
 		Cfg:       cfg,
 		Client:    cl,
 		K8sClient: k8sClient,
+		// MaestroClient is initialized lazily via GetMaestroClient() to avoid
+		// unnecessary K8s API calls in test suites that don't use Maestro
 	}, nil
 }
