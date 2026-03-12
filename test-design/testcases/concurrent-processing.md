@@ -2,16 +2,16 @@
 
 ## Table of Contents
 
-1. [System can process concurrent cluster creations without event loss or resource conflicts](#test-title-system-can-process-concurrent-cluster-creations-without-event-loss-or-resource-conflicts)
+1. [System can process concurrent cluster creations without resource conflicts](#test-title-system-can-process-concurrent-cluster-creations-without-event-loss-or-resource-conflicts)
 2. [Multiple nodepools can coexist under same cluster without conflicts](#test-title-multiple-nodepools-can-coexist-under-same-cluster-without-conflicts)
 
 ---
 
-## Test Title: System can process concurrent cluster creations without event loss or resource conflicts
+## Test Title: System can process concurrent cluster creations without resource conflicts
 
 ### Description
 
-This test validates that the system can handle multiple cluster creation requests submitted simultaneously without message loss, resource conflicts, or processing failures. It ensures that the system can correctly process concurrent events and all clusters reach their expected final state.
+This test validates that the system can handle multiple cluster creation requests submitted simultaneously without resource conflicts or processing failures. It ensures that all clusters are correctly processed and reach their expected final state.
 
 ---
 
@@ -88,7 +88,7 @@ curl -s ${API_URL}/api/hyperfleet/v1/clusters/{cluster_id}/statuses | jq '.items
 **Expected Result:**
 - Each cluster has the expected number of adapter status entries
 - All adapters report Applied=True, Available=True, Health=True for each cluster
-- No missing status reports (no message was lost)
+- No missing status reports
 
 #### Step 5: Cleanup resources
 **Action:**
@@ -166,7 +166,7 @@ curl -s ${API_URL}/api/hyperfleet/v1/clusters/{cluster_id}/nodepools | jq '.item
 **Action:**
 - For each nodepool created in Step 1, check its conditions:
 ```bash
-curl -s ${API_URL}/api/hyperfleet/v1/nodepools/{nodepool_id} | jq '.conditions'
+curl -s ${API_URL}/api/hyperfleet/v1/clusters/{cluster_id}/nodepools/{nodepool_id} | jq '.conditions'
 ```
 
 **Expected Result:**
@@ -177,7 +177,7 @@ curl -s ${API_URL}/api/hyperfleet/v1/nodepools/{nodepool_id} | jq '.conditions'
 **Action:**
 - Check that each nodepool has its own set of resources:
 ```bash
-kubectl get configmaps -n {cluster_id} -l nodepool-id
+kubectl get configmaps -n {cluster_id} -l hyperfleet.io/nodepool-id
 ```
 
 **Expected Result:**
@@ -198,7 +198,7 @@ kubectl delete -n {cluster_id} <nodepool-resources>
 
 **Note:** This is a workaround cleanup method. Once CLM supports DELETE operations for "nodepools" resource type, this step should be replaced with:
 ```bash
-curl -X DELETE ${API_URL}/api/hyperfleet/v1/nodepools/{nodepool_id}
+curl -X DELETE ${API_URL}/api/hyperfleet/v1/clusters/{cluster_id}/nodepools/{nodepool_id}
 ```
 
 ---

@@ -6,8 +6,7 @@
 2. [Cluster adapters can create K8s resources with correct state and metadata](#test-title-cluster-adapters-can-create-k8s-resources-with-correct-state-and-metadata)
 3. [Cluster adapters can enforce dependency order during workflow](#test-title-cluster-adapters-can-enforce-dependency-order-during-workflow)
 4. [Cluster can reflect adapter failure in top-level status](#test-title-cluster-can-reflect-adapter-failure-in-top-level-status)
-5. [API can reject cluster with invalid name format (RFC 1123)](#test-title-api-can-reject-cluster-with-invalid-name-format-rfc-1123)
-6. [API can reject cluster with name exceeding max length](#test-title-api-can-reject-cluster-with-name-exceeding-max-length)
+5. [Cluster can reach correct status after adapter crash and recovery](#test-title-cluster-can-reach-correct-status-after-adapter-crash-and-recovery)
 
 ---
 
@@ -360,7 +359,7 @@ curl -X DELETE ${API_URL}/api/hyperfleet/v1/clusters/{cluster_id}
 
 ### Description
 
-This test validates that the end-to-end workflow correctly handles adapter failure scenarios. When an adapter reports a failure status (e.g., `Health=False`), the cluster's top-level conditions (`Ready`, `Available`) should remain `False`, accurately reflecting that the cluster has not reached a healthy state.
+This test validates that the end-to-end workflow correctly handles adapter failure scenarios. When an adapter's precondition configuration contains an invalid API endpoint URL, the adapter framework should detect the failure and report error status. The cluster's top-level conditions (`Ready`, `Available`) should remain `False`, accurately reflecting that the cluster has not reached a healthy state. This is a common configuration error scenario when external teams implement their own adapters.
 
 ---
 
@@ -372,7 +371,7 @@ This test validates that the end-to-end workflow correctly handles adapter failu
 | **Automation** | Not Automated |
 | **Version** | MVP |
 | **Created** | 2026-02-11 |
-| **Updated** | 2026-03-04 |
+| **Updated** | 2026-03-12 |
 
 
 ---
@@ -381,13 +380,29 @@ This test validates that the end-to-end workflow correctly handles adapter failu
 
 1. Environment is prepared using [hyperfleet-infra](https://github.com/openshift-hyperfleet/hyperfleet-infra) with all required platform resources
 2. HyperFleet API and HyperFleet Sentinel services are deployed and running successfully
-3. A dedicated failure-adapter is deployed via Helm with pre-configured failure behavior (e.g., `SIMULATE_RESULT=failure`), separate from the normal adapters used in other tests
 
 ---
 
 ### Test Steps
 
-#### Step 1: Submit an API request to create a Cluster resource
+#### Step 1: Deploy dedicated precondition-error-adapter with invalid precondition URL
+**Action:**
+- Deploy a precondition-error-adapter via Helm with AdapterConfig containing a precondition that references an invalid API endpoint URL, separate from the normal adapters used in other tests. For example:
+```yaml
+preconditions:
+  - name: "clusterStatus"
+    apiCall:
+      method: "GET"
+      url: "http://invalid-service:8080/api/nonexistent"
+    capture:
+      - name: "clusterName"
+        field: "name"
+```
+
+**Expected Result:**
+- precondition-error-adapter is deployed and running successfully
+
+#### Step 2: Submit an API request to create a Cluster resource
 
 **Action:**
 - Submit a POST request to create a Cluster resource:
@@ -400,20 +415,21 @@ curl -X POST ${API_URL}/api/hyperfleet/v1/clusters \
 **Expected Result:**
 - API returns successful response with cluster ID
 
-#### Step 2: Verify adapter failure is reported via status API
+#### Step 3: Verify adapter failure is reported via status API
 
 **Action:**
-- Poll adapter statuses until the failure-adapter reports its status:
+- Poll adapter statuses until the precondition-error-adapter reports its status:
 ```bash
 curl -X GET ${API_URL}/api/hyperfleet/v1/clusters/{cluster_id}/statuses
 ```
 
 **Expected Result:**
-- The failure-adapter is present in the statuses response
-- The failure-adapter reports `Health` condition with `status: "False"`, with reason and message indicating the failure
-- The failure-adapter reports `Available` condition with `status: "False"`
+- The precondition-error-adapter is present in the statuses response
+- The adapter reports `Applied` condition with `status: "False"`
+- The adapter reports `Available` condition with `status: "False"`
+- The adapter reports `Health` condition with `status: "False"`, with reason and message indicating precondition failure details
 
-#### Step 3: Verify cluster top-level status reflects adapter failure
+#### Step 4: Verify cluster top-level status reflects adapter failure
 
 **Action:**
 - Retrieve cluster status:
@@ -426,18 +442,23 @@ curl -X GET ${API_URL}/api/hyperfleet/v1/clusters/{cluster_id}
 - Cluster `Available` condition remains `status: "False"`
 - Cluster does not transition to Ready state while any adapter reports failure
 
-#### Step 4: Cleanup resources
+#### Step 5: Cleanup Resources (AfterEach)
 
 **Action:**
 - Delete the namespace created for this cluster:
 ```bash
 kubectl delete namespace {cluster_id}
 ```
-- Uninstall the failure-adapter Helm release
+- Uninstall the precondition-error-adapter Helm release
+- Clean up the Pub/Sub subscription created by the adapter (if using Google Pub/Sub broker):
+```bash
+gcloud pubsub subscriptions delete {subscription_id} --project={project_id}
+```
 
 **Expected Result:**
 - Namespace and all associated resources are deleted successfully
-- Failure-adapter deployment is removed
+- precondition-error-adapter deployment is removed
+- Pub/Sub subscription is deleted (if applicable)
 
 **Note:** This is a workaround cleanup method. Once CLM supports DELETE operations for "clusters" resource type, the namespace deletion should be replaced with:
 ```bash
@@ -446,66 +467,11 @@ curl -X DELETE ${API_URL}/api/hyperfleet/v1/clusters/{cluster_id}
 
 ---
 
-## Test Title: API can reject cluster with invalid name format (RFC 1123)
+## Test Title: Cluster can reach correct status after adapter crash and recovery
 
 ### Description
 
-This test validates that the HyperFleet API correctly rejects cluster creation requests with invalid name formats that don't comply with RFC 1123 DNS label naming conventions.
-
----
-
-| **Field** | **Value** |
-|-----------|-----------|
-| **Pos/Neg** | Negative |
-| **Priority** | Tier1 |
-| **Status** | Draft |
-| **Automation** | Not Automated |
-| **Version** | MVP |
-| **Created** | 2026-02-11 |
-| **Updated** | 2026-02-11 |
-
----
-
-### Preconditions
-1. HyperFleet API is deployed and running successfully
-2. API is accessible via port-forward or ingress
-
----
-
-### Test Steps
-
-#### Step 1: Send POST request with invalid name format
-**Action:**
-```bash
-curl -X POST ${API_URL}/api/hyperfleet/v1/clusters \
-  -H "Content-Type: application/json" \
-  -d '{
-    "kind": "Cluster",
-    "name": "Invalid_Name_With_Underscore",
-    "spec": {"platform": {"type": "gcp", "gcp": {"projectID": "test", "region": "us-central1"}}}
-  }'
-```
-
-**Expected Result:**
-- API returns HTTP 400 Bad Request
-- Response contains validation error:
-```json
-{
-  "type": "https://api.hyperfleet.io/errors/validation-error",
-  "code": "HYPERFLEET-VAL-000",
-  "title": "Validation Failed",
-  "status": 400,
-  "detail": "name must start and end with lowercase letter or number, and contain only lowercase letters, numbers, and hyphens"
-}
-```
-
----
-
-## Test Title: API can reject cluster with name exceeding max length
-
-### Description
-
-This test validates that the HyperFleet API correctly rejects cluster creation requests with names exceeding the maximum allowed length.
+This test validates the system's self-healing capability. When an adapter crashes during cluster processing, the system should ensure that the cluster's status is eventually reported correctly after the adapter recovers. This confirms that no cluster is left in an inconsistent state due to adapter failures.
 
 ---
 
@@ -517,40 +483,99 @@ This test validates that the HyperFleet API correctly rejects cluster creation r
 | **Automation** | Not Automated |
 | **Version** | MVP |
 | **Created** | 2026-02-11 |
-| **Updated** | 2026-02-11 |
+| **Updated** | 2026-03-12 |
+
 
 ---
 
 ### Preconditions
-1. HyperFleet API is deployed and running successfully
+
+1. Environment is prepared using [hyperfleet-infra](https://github.com/openshift-hyperfleet/hyperfleet-infra) with all required platform resources
+2. HyperFleet API and HyperFleet Sentinel services are deployed and running successfully
 
 ---
 
 ### Test Steps
 
-#### Step 1: Send POST request with name exceeding max length
+#### Step 1: Deploy dedicated crash-adapter with pre-configured crash behavior
 **Action:**
+- Deploy a crash-adapter via Helm with `SIMULATE_RESULT=crash`, separate from the normal adapters used in other tests
+
+**Expected Result:**
+- crash-adapter is deployed and running successfully
+
+#### Step 2: Submit an API request to create a Cluster resource
+
+**Action:**
+- Submit a POST request to create a Cluster resource:
 ```bash
 curl -X POST ${API_URL}/api/hyperfleet/v1/clusters \
   -H "Content-Type: application/json" \
-  -d '{
-    "kind": "Cluster",
-    "name": "this-is-a-very-long-cluster-name-that-exceeds-the-maximum-allowed-length-for-cluster-names",
-    "spec": {"platform": {"type": "gcp", "gcp": {"projectID": "test", "region": "us-central1"}}}
-  }'
+  -d @testdata/payloads/clusters/cluster-request.json
 ```
 
 **Expected Result:**
-- API returns HTTP 400 Bad Request
-- Response contains validation error:
-```json
-{
-  "type": "https://api.hyperfleet.io/errors/validation-error",
-  "code": "HYPERFLEET-VAL-000",
-  "title": "Validation Failed",
-  "status": 400,
-  "detail": "name must be at most 53 characters"
-}
+- API returns successful response with cluster ID
+
+#### Step 3: Verify crash-adapter has not reported status
+
+**Action:**
+- Check cluster adapter statuses via API:
+```bash
+curl -s ${API_URL}/api/hyperfleet/v1/clusters/{cluster_id}/statuses | jq '.items[].adapter'
+```
+- Check crash-adapter pod status:
+```bash
+kubectl get pods -n hyperfleet -l app.kubernetes.io/instance=crash-adapter --no-headers
+```
+
+**Expected Result:**
+- API: statuses response does not contain an entry for `crash-adapter` (it crashed before reporting status)
+- kubectl: crash-adapter pod shows CrashLoopBackOff or Error state
+
+#### Step 4: Restore crash-adapter to normal mode
+
+**Action:**
+- Upgrade crash-adapter Helm release with `SIMULATE_RESULT=success`
+
+**Expected Result:**
+- crash-adapter pod starts and remains Running
+
+#### Step 5: Verify adapter eventually reports correct status
+
+**Action:**
+- Poll crash-adapter status via API until it appears:
+```bash
+curl -s ${API_URL}/api/hyperfleet/v1/clusters/{cluster_id}/statuses \
+  | jq '.items[] | select(.adapter == "crash-adapter")'
+```
+
+**Expected Result:**
+- crash-adapter status entry is now present in the statuses response
+- crash-adapter reports all three condition types with `status: "True"`: `Applied`, `Available`, `Health`
+- `observed_generation` is set to `1`
+
+#### Step 6: Cleanup Resources (AfterEach)
+
+**Action:**
+- Delete the namespace created for this cluster:
+```bash
+kubectl delete namespace {cluster_id}
+```
+- Uninstall the crash-adapter Helm release
+- Clean up the Pub/Sub subscription created by the adapter (if using Google Pub/Sub broker):
+```bash
+gcloud pubsub subscriptions delete {subscription_id} --project={project_id}
+```
+
+**Expected Result:**
+- Namespace and all associated resources are deleted successfully
+- crash-adapter deployment is removed
+- Pub/Sub subscription is deleted (if applicable)
+
+**Note:** This is a workaround cleanup method. Once CLM supports DELETE operations for "clusters" resource type, the namespace deletion should be replaced with:
+```bash
+curl -X DELETE ${API_URL}/api/hyperfleet/v1/clusters/{cluster_id}
 ```
 
 ---
