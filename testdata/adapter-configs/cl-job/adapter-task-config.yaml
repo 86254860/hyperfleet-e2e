@@ -27,7 +27,6 @@ preconditions:
         field: "generation"
       - name: "simulateResult"     # possible values: success (default), failure, hang, crash, invalid-json, missing-status
         field: "simulateResult"
-        default: "success"
       - name: "readyConditionStatus"
         expression: |
           status.conditions.filter(c, c.type == "Ready").size() > 0
