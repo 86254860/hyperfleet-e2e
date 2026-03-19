@@ -411,7 +411,7 @@ func (h *Helper) DeletePubSubSubscription(ctx context.Context, subscriptionID st
 	cmdCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
-	cmd := exec.CommandContext(cmdCtx, "gcloud", "pubsub", "subscriptions", "delete",
+	cmd := exec.CommandContext(cmdCtx, "gcloud", "pubsub", "subscriptions", "delete", // #nosec G204 -- subscriptionID and projectID are from trusted test config
 		subscriptionID,
 		"--project="+projectID,
 		"--quiet")
