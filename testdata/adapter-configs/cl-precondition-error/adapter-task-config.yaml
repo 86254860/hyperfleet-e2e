@@ -103,9 +103,11 @@ post:
                     : "Healthy"
             message:
               expression: |
-                adapter.?errorMessage.orValue("") != ""
-                  ? adapter.?errorMessage.orValue("")
-                  : "All adapter operations completed successfully"
+                adapter.?executionStatus.orValue("") != "success"
+                  ? adapter.?errorMessage.orValue("Adapter execution failed")
+                  : adapter.?errorMessage.orValue("") != ""
+                    ? adapter.?errorMessage.orValue("")
+                    : "All adapter operations completed successfully"
         observed_generation:
           expression: "1"
         observed_time: "{{ now | date \"2006-01-02T15:04:05Z07:00\" }}"
