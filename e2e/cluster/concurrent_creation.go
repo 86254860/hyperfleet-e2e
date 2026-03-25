@@ -63,11 +63,17 @@ var _ = ginkgo.Describe("[Suite: cluster][concurrent] System can process concurr
 				}
 				wg.Wait()
 
-				// Verify all creations succeeded and collect IDs
+				// Collect all successful IDs first to ensure AfterEach can clean up all created clusters
+				for _, r := range results {
+					if r.err == nil && r.id != "" {
+						clusterIDs = append(clusterIDs, r.id)
+					}
+				}
+
+				// Verify all creations succeeded
 				for i, r := range results {
 					Expect(r.err).NotTo(HaveOccurred(), "cluster creation %d failed", i)
 					Expect(r.id).NotTo(BeEmpty(), "cluster %d should have a non-empty ID", i)
-					clusterIDs = append(clusterIDs, r.id)
 					ginkgo.GinkgoWriter.Printf("Created cluster %d: ID=%s, Name=%s\n", i, r.id, r.name)
 				}
 
