@@ -159,19 +159,6 @@ var _ = ginkgo.Describe("[Suite: cluster][concurrent] System can process concurr
 			ginkgo.By(fmt.Sprintf("Cleaning up %d test clusters", len(clusterIDs)))
 			var cleanupErrors []error
 			for _, clusterID := range clusterIDs {
-				// Wait for cluster Ready before cleanup to prevent namespace deletion conflicts
-				// Without this, adapters may still be creating resources during cleanup
-				err := h.WaitForClusterCondition(
-					ctx,
-					clusterID,
-					client.ConditionTypeReady,
-					openapi.ResourceConditionStatusTrue,
-					h.Cfg.Timeouts.Cluster.Ready,
-				)
-				if err != nil {
-					ginkgo.GinkgoWriter.Printf("WARNING: cluster %s did not reach Ready state before cleanup: %v\n", clusterID, err)
-				}
-
 				ginkgo.By("cleaning up cluster " + clusterID)
 				if err := h.CleanupTestCluster(ctx, clusterID); err != nil {
 					ginkgo.GinkgoWriter.Printf("ERROR: failed to cleanup cluster %s: %v\n", clusterID, err)
